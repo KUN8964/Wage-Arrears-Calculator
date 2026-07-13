@@ -18,7 +18,8 @@ test("server-renders the public calculator", async () => {
   const html = await response.text();
   assert.match(html, /薪保计算器/);
   assert.match(html, /工资与社保欠款/);
-  assert.match(html, /快速开始/);
+  assert.match(html, /引导测算/);
+  assert.match(html, /先填写三个基础事实/);
   assert.doesNotMatch(html, /登录账号|注册账号|codex-preview/);
 });
 
@@ -28,11 +29,11 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /application\/json/);
   assert.match(page, /text\/csv/);
   assert.match(page, /最多支持 11 个月/);
-  assert.match(page, /生成月度明细/);
+  assert.match(page, /确认并生成结果/);
   assert.match(page, /入职日期/);
   assert.match(page, /统计截止日期/);
   assert.match(page, /开始欠薪月份/);
-  assert.match(page, /首个欠薪月已发比例/);
+  assert.match(page, /首个欠薪月实际发了多少/);
   assert.match(page, /劳动合同开始日/);
   assert.match(page, /automaticDoubleRuleFor/);
   assert.match(page, /已自动启用/);
@@ -41,10 +42,12 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /monthCountBetween/);
   assert.match(page, /尚欠 \{socialMonths\} 个月/);
   assert.match(page, /socialPaid.*socialBase.*socialRate/);
-  assert.match(page, /社保公司实缴开始月/);
-  assert.match(page, /公积金公司实缴开始月/);
+  assert.match(page, /effectiveSocialStart/);
+  assert.match(page, /effectiveFundStart/);
   assert.match(page, /paidMonthsWithin/);
   assert.match(page, /实缴 \{socialPaidMonths\} 个月/);
-  assert.match(page, /公司应缴基数 × 公司比例 − 公司实际已缴/);
+  assert.match(page, /socialDueFor/);
+  assert.match(page, /fundDueFor/);
+  assert.match(page, /查看精算明细/);
   assert.doesNotMatch(page, /fetch\(|signIn|requireChatGPTUser/);
 });
