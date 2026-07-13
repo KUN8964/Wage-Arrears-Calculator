@@ -2,7 +2,7 @@
 
 ## Current Progress
 
-- 当前阶段：缴费金额与法规比例提示增强待发布。
+- 当前阶段：缴费金额与法规比例提示增强已发布。
 - 当前交付目标：把公司实际缴纳金额设为主输入，并提供准确的比例法规提示。
 
 ## Stage Checklist
@@ -20,7 +20,7 @@
 | 7 | 引导模式第一阶段实现 | Completed |
 | 8 | 回归验证、提交与部署 | Completed |
 | 9 | 实缴金额主输入与法规比例提示 | Completed |
-| 10 | 增强版本提交与部署 | In progress |
+| 10 | 增强版本提交与部署 | Completed |
 
 ## MVP Scope After Confirmation
 
