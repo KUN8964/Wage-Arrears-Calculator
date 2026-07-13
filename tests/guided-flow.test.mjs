@@ -63,3 +63,11 @@ test("aligns contract salary with date inputs without a currency icon", async ()
   assert.match(css, /\.salary-field \.salary-input\{height:42px/);
   assert.doesNotMatch(css, /\.salary-field \.salary-input i\{/);
 });
+
+test("places the custom arrears rate after 100 percent at matching height", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /\[0,30,50,100\]\.map[\s\S]*custom-rate-input/);
+  assert.match(css, /\.wage-rate-choices\{grid-template-columns:repeat\(5/);
+  assert.match(css, /\.wage-rate-choices \.custom-rate-input\{height:31px/);
+});
