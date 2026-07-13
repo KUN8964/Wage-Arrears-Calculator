@@ -29,5 +29,7 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /text\/csv/);
   assert.match(page, /最多支持 11 个月/);
   assert.match(page, /生成月度明细/);
+  assert.match(page, /socialPaid.*socialBase.*socialRate/);
+  assert.match(page, /应缴基数 × 比例 − 实际已缴/);
   assert.doesNotMatch(page, /fetch\(|signIn|requireChatGPTUser/);
 });

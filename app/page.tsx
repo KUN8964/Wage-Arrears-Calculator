@@ -15,16 +15,18 @@ type Row = {
   contractPay: number;
   socialPaid: number;
   socialBase: number;
+  socialRate: number;
   socialDue: number;
   fundPaid: number;
   fundBase: number;
+  fundRate: number;
   fundDue: number;
 };
 
 type DoublePayRule = { enabled: boolean; contractEnd: string; continuedUntil: string };
 const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedUntil: "" };
-type QuickSetup = { startMonth: string; endMonth: string; contractPay: number; duePay: number; actualPay: number; socialDue: number; fundDue: number };
-const defaultSetup: QuickSetup = { startMonth: "", endMonth: "", contractPay: 0, duePay: 0, actualPay: 0, socialDue: 0, fundDue: 0 };
+type QuickSetup = { startMonth: string; endMonth: string; contractPay: number; duePay: number; actualPay: number; socialPaid: number; socialBase: number; socialRate: number; fundPaid: number; fundBase: number; fundRate: number };
+const defaultSetup: QuickSetup = { startMonth: "", endMonth: "", contractPay: 0, duePay: 0, actualPay: 0, socialPaid: 0, socialBase: 0, socialRate: 0, fundPaid: 0, fundBase: 0, fundRate: 0 };
 
 const exampleRows: Row[] = [
   [1,"2025/06",0,"",0,"已结清",0,0,20000,384.96,4812,3979.256,250,2490,2101.2],
@@ -44,10 +46,25 @@ const exampleRows: Row[] = [
 ].map(([id,payDate,normalPay,note,paid,status,duePay,arrears,contractPay,socialPaid,socialBase,socialDue,fundPaid,fundBase,fundDue], index) => {
   const start = new Date(2025, 5 + Math.max(0, index - 1), 1);
   const wageMonth = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
-  return { id, wageMonth, payDate, normalPay, note, paid, status, duePay, arrears, contractPay, socialPaid, socialBase, socialDue, fundPaid, fundBase, fundDue } as Row;
+  const targetBase = Number(contractPay || 0);
+  return { id, wageMonth, payDate, normalPay, note, paid, status, duePay, arrears, contractPay, socialPaid, socialBase:targetBase, socialRate:targetBase ? (Number(socialDue)+Number(socialPaid))/targetBase*100 : 0, socialDue, fundPaid, fundBase:targetBase, fundRate:targetBase ? (Number(fundDue)+Number(fundPaid))/targetBase*100 : 0, fundDue } as Row;
 });
 
-const blankRow = (): Row => ({ id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"", paid:0, status:"未结清", duePay:0, arrears:0, contractPay:0, socialPaid:0, socialBase:0, socialDue:0, fundPaid:0, fundBase:0, fundDue:0 });
+const blankRow = (): Row => ({ id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"", paid:0, status:"未结清", duePay:0, arrears:0, contractPay:0, socialPaid:0, socialBase:0, socialRate:0, socialDue:0, fundPaid:0, fundBase:0, fundRate:0, fundDue:0 });
+
+const socialDueFor = (row: Row) => Math.max(0, Number(row.socialBase || 0) * Number(row.socialRate || 0) / 100 - Number(row.socialPaid || 0));
+const fundDueFor = (row: Row) => Math.max(0, Number(row.fundBase || 0) * Number(row.fundRate || 0) / 100 - Number(row.fundPaid || 0));
+const normalizeRow = (row: Row, index = 0): Row => {
+  if (row.socialRate != null && row.fundRate != null) return row;
+  const fallback = exampleRows[Math.min(index, exampleRows.length - 1)] || blankRow();
+  const socialBase = Number(row.contractPay || row.socialBase || 0);
+  const fundBase = Number(row.contractPay || row.fundBase || 0);
+  return {
+    ...fallback, ...row, socialBase, fundBase,
+    socialRate: socialBase ? (Number(row.socialDue || 0) + Number(row.socialPaid || 0)) / socialBase * 100 : 0,
+    fundRate: fundBase ? (Number(row.fundDue || 0) + Number(row.fundPaid || 0)) / fundBase * 100 : 0,
+  };
+};
 
 const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 const atMidnight = (value: string) => value ? new Date(`${value}T00:00:00`) : null;
@@ -88,9 +105,9 @@ const fields: { key: keyof Row; label: string; group?: string; width?: number }[
   {key:"note",label:"备注",width:178}, {key:"paid",label:"后续补发",width:108},
   {key:"status",label:"结清状态",width:100}, {key:"duePay",label:"应发薪水",width:110},
   {key:"arrears",label:"欠薪",width:108}, {key:"contractPay",label:"合同月薪",width:110},
-  {key:"socialPaid",label:"已缴金额",group:"社保",width:105}, {key:"socialBase",label:"实缴基数",group:"社保",width:105},
+  {key:"socialPaid",label:"实际已缴",group:"社保",width:105}, {key:"socialBase",label:"应缴基数",group:"社保",width:105}, {key:"socialRate",label:"比例(%)",group:"社保",width:94},
   {key:"socialDue",label:"应补缴金额",group:"社保",width:122}, {key:"fundPaid",label:"已缴金额",group:"公积金",width:105},
-  {key:"fundBase",label:"实缴基数",group:"公积金",width:105}, {key:"fundDue",label:"应补缴金额",group:"公积金",width:122},
+  {key:"fundBase",label:"应缴基数",group:"公积金",width:105}, {key:"fundRate",label:"比例(%)",group:"公积金",width:94}, {key:"fundDue",label:"应补缴金额",group:"公积金",width:122},
 ];
 
 export default function Home() {
@@ -107,7 +124,7 @@ export default function Home() {
     const cached = localStorage.getItem("xinbao-rows");
     if (cached) try {
       const parsed = JSON.parse(cached) as Row[];
-      setRows(parsed.map((row, index) => ({ ...exampleRows[Math.min(index, exampleRows.length - 1)], ...row, wageMonth: row.wageMonth || exampleRows[index]?.wageMonth || "" })));
+      setRows(parsed.map((row, index) => normalizeRow({ ...row, wageMonth: row.wageMonth || exampleRows[index]?.wageMonth || "" } as Row, index)));
     } catch { /* use seed data */ }
     const cachedRule = localStorage.getItem("xinbao-double-rule");
     if (cachedRule) try { setDoubleRule(JSON.parse(cachedRule)); } catch { /* use defaults */ }
@@ -118,8 +135,8 @@ export default function Home() {
   const doubleById = useMemo(() => new Map(rows.map(row => [row.id, doublePayForRow(row, doubleRule)])), [rows, doubleRule]);
   const totals = useMemo(() => rows.reduce((a, r) => ({
     normal: a.normal + Number(r.normalPay || 0), paid: a.paid + Number(r.paid || 0),
-    arrears: a.arrears + Number(r.arrears || 0), social: a.social + Number(r.socialDue || 0),
-    fund: a.fund + Number(r.fundDue || 0), double: a.double + Number(doubleById.get(r.id) || 0),
+    arrears: a.arrears + Number(r.arrears || 0), social: a.social + socialDueFor(r),
+    fund: a.fund + fundDueFor(r), double: a.double + Number(doubleById.get(r.id) || 0),
   }), {normal:0,paid:0,arrears:0,social:0,fund:0,double:0}), [rows, doubleById]);
   const grandTotal = totals.arrears + totals.social + totals.fund + totals.double;
   const openRows = rows.filter(r => r.status === "未结清").length;
@@ -130,23 +147,24 @@ export default function Home() {
     ...(["duePay","normalPay","paid"].includes(String(key)) ? { arrears: Math.max(0, Number(key === "duePay" ? value : r.duePay) - Number(key === "normalPay" ? value : r.normalPay) - Number(key === "paid" ? value : r.paid)) } : {})
   } : r));
 
-  const save = () => { localStorage.setItem("xinbao-rows", JSON.stringify(rows)); localStorage.setItem("xinbao-double-rule", JSON.stringify(doubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({caseName,setup})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
-  const addRow = () => setRows(prev => [...prev, { ...(prev[prev.length - 1] || blankRow()), id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"新增月份", paid:0, status:"未结清", duePay:Number(setup.duePay || setup.contractPay || 0), arrears:Number(setup.duePay || setup.contractPay || 0), contractPay:Number(setup.contractPay || 0) }]);
+  const rowsWithComputedGaps = () => rows.map(r => ({...r, socialDue:socialDueFor(r), fundDue:fundDueFor(r)}));
+  const save = () => { localStorage.setItem("xinbao-rows", JSON.stringify(rowsWithComputedGaps())); localStorage.setItem("xinbao-double-rule", JSON.stringify(doubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({caseName,setup})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
+  const addRow = () => setRows(prev => [...prev, { ...(prev[prev.length - 1] || blankRow()), id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"新增月份", paid:0, status:"未结清", duePay:Number(setup.duePay || setup.contractPay || 0), arrears:Number(setup.duePay || setup.contractPay || 0), contractPay:Number(setup.contractPay || 0), socialPaid:Number(setup.socialPaid||0), socialBase:Number(setup.socialBase||setup.contractPay||0), socialRate:Number(setup.socialRate||0), fundPaid:Number(setup.fundPaid||0), fundBase:Number(setup.fundBase||setup.contractPay||0), fundRate:Number(setup.fundRate||0) }]);
   const remove = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
   const exportCsv = () => {
     const header = [...fields.map(f => `${f.group ? f.group + "-" : ""}${f.label}`), "未续签双倍工资差额", "合计欠款"];
-    const body = rows.map(r => [...fields.map(f => String(r[f.key])), String(doubleById.get(r.id) || 0), String(r.arrears + r.socialDue + r.fundDue + (doubleById.get(r.id) || 0))]);
+    const body = rows.map(r => [...fields.map(f => String(f.key === "socialDue" ? socialDueFor(r) : f.key === "fundDue" ? fundDueFor(r) : r[f.key])), String(doubleById.get(r.id) || 0), String(r.arrears + socialDueFor(r) + fundDueFor(r) + (doubleById.get(r.id) || 0))]);
     const csv = "\ufeff" + [header, ...body].map(line => line.map(v => `"${v.replaceAll('"','""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪保清算明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:1, caseName, setup, doubleRule, rows }, null, 2);
+    const data = JSON.stringify({ version:2, caseName, setup, doubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
   };
   const importData = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => { try { const data = JSON.parse(String(reader.result)); if (!Array.isArray(data.rows)) throw new Error(); setRows(data.rows); setDoubleRule({...defaultRule,...data.doubleRule}); setSetup({...defaultSetup,...data.setup}); setCaseName(data.caseName || "导入的欠款测算"); } catch { alert("文件无法识别，请选择由本计算器导出的 JSON 文件。"); } };
+    reader.onload = () => { try { const data = JSON.parse(String(reader.result)); if (!Array.isArray(data.rows)) throw new Error(); setRows(data.rows.map((row:Row,index:number)=>normalizeRow(row,index))); setDoubleRule({...defaultRule,...data.doubleRule}); setSetup({...defaultSetup,...data.setup}); setCaseName(data.caseName || "导入的欠款测算"); } catch { alert("文件无法识别，请选择由本计算器导出的 JSON 文件。"); } };
     reader.readAsText(file);
   };
   const generateRows = () => {
@@ -157,7 +175,10 @@ export default function Home() {
     const generated = Array.from({length:count}, (_,i) => {
       const date = new Date(sy, sm - 1 + i, 1), wageMonth = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
       const due = Number(setup.duePay || setup.contractPay || 0), actual = Number(setup.actualPay || 0);
-      return { id:Date.now()+i, wageMonth, payDate:"", normalPay:actual, note:`${date.getMonth()+1}月工资`, paid:0, status:due-actual>0?"未结清":"已结清", duePay:due, arrears:Math.max(0,due-actual), contractPay:Number(setup.contractPay||0), socialPaid:0, socialBase:0, socialDue:Number(setup.socialDue||0), fundPaid:0, fundBase:0, fundDue:Number(setup.fundDue||0) } as Row;
+      const socialPaid=Number(setup.socialPaid||0), socialBase=Number(setup.socialBase||setup.contractPay||0), socialRate=Number(setup.socialRate||0);
+      const fundPaid=Number(setup.fundPaid||0), fundBase=Number(setup.fundBase||setup.contractPay||0), fundRate=Number(setup.fundRate||0);
+      const socialDue=Math.max(0,socialBase*socialRate/100-socialPaid), fundDue=Math.max(0,fundBase*fundRate/100-fundPaid);
+      return { id:Date.now()+i, wageMonth, payDate:"", normalPay:actual, note:`${date.getMonth()+1}月工资`, paid:0, status:due-actual>0||socialDue>0||fundDue>0?"未结清":"已结清", duePay:due, arrears:Math.max(0,due-actual), contractPay:Number(setup.contractPay||0), socialPaid, socialBase, socialRate, socialDue, fundPaid, fundBase, fundRate, fundDue } as Row;
     });
     if (rows.some(r => r.wageMonth || r.duePay || r.normalPay) && !confirm("批量生成会替换当前明细，是否继续？")) return;
     setRows(generated);
@@ -183,11 +204,16 @@ export default function Home() {
         <label><span>合同月薪</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.contractPay || ""} placeholder="0" onChange={e=>setSetup(s=>({...s,contractPay:Number(e.target.value)}))}/></div></label>
         <label><span>每月应发工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.duePay || ""} placeholder="默认等于合同月薪" onChange={e=>setSetup(s=>({...s,duePay:Number(e.target.value)}))}/></div></label>
         <label><span>每月已发工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.actualPay || ""} placeholder="0" onChange={e=>setSetup(s=>({...s,actualPay:Number(e.target.value)}))}/></div></label>
-        <label><span>每月社保应补缴</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialDue || ""} placeholder="0" onChange={e=>setSetup(s=>({...s,socialDue:Number(e.target.value)}))}/></div></label>
-        <label><span>每月公积金应补缴</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.fundDue || ""} placeholder="0" onChange={e=>setSetup(s=>({...s,fundDue:Number(e.target.value)}))}/></div></label>
+        <label><span>社保每月实际已缴</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialPaid || ""} placeholder="公司每月实际缴纳" onChange={e=>setSetup(s=>({...s,socialPaid:Number(e.target.value)}))}/></div></label>
+        <label><span>社保应缴基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialBase || ""} placeholder="默认使用合同月薪" onChange={e=>setSetup(s=>({...s,socialBase:Number(e.target.value)}))}/></div></label>
+        <label><span>社保应缴比例</span><div className="money-input"><i>%</i><input type="number" min="0" step="0.01" value={setup.socialRate || ""} placeholder="填写单位或综合比例" onChange={e=>setSetup(s=>({...s,socialRate:Number(e.target.value)}))}/></div></label>
+        <label><span>公积金每月实际已缴</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.fundPaid || ""} placeholder="公司每月实际缴纳" onChange={e=>setSetup(s=>({...s,fundPaid:Number(e.target.value)}))}/></div></label>
+        <label><span>公积金应缴基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.fundBase || ""} placeholder="默认使用合同月薪" onChange={e=>setSetup(s=>({...s,fundBase:Number(e.target.value)}))}/></div></label>
+        <label><span>公积金应缴比例</span><div className="money-input"><i>%</i><input type="number" min="0" step="0.01" value={setup.fundRate || ""} placeholder="填写单位或综合比例" onChange={e=>setSetup(s=>({...s,fundRate:Number(e.target.value)}))}/></div></label>
         <button className="generate" onClick={generateRows}><span>生成月度明细</span><small>生成后仍可逐项修改</small></button>
       </div>
-      <p className="quick-tip"><b>怎么填？</b> 不确定社保或公积金金额时可以先填 0，生成月份后再到明细表逐月填写；所有数据仅保存在当前浏览器中。</p>
+      <div className="formula-preview"><div><span>社保预计每月补缴</span><strong>¥ {money(Math.max(0, Number(setup.socialBase||setup.contractPay||0)*Number(setup.socialRate||0)/100-Number(setup.socialPaid||0)))}</strong><small>应缴基数 × 比例 − 实际已缴</small></div><div><span>公积金预计每月补缴</span><strong>¥ {money(Math.max(0, Number(setup.fundBase||setup.contractPay||0)*Number(setup.fundRate||0)/100-Number(setup.fundPaid||0)))}</strong><small>应缴基数 × 比例 − 实际已缴</small></div><p><b>口径必须一致：</b>如果“实际已缴”填的是单位缴纳额，比例也填单位比例；如果填单位与个人合计金额，比例应填双方比例之和。各地费率和基数上下限不同，请按缴费地当期政策填写。</p></div>
+      <p className="quick-tip"><b>普通用户怎么填？</b> 从社保、公积金查询记录中抄入公司每月实际缴纳金额，再填写当地应缴基数和同口径比例，系统会自动计算差额；生成后每个月仍可单独修改。</p>
     </section>
 
     <section className="metrics" aria-label="测算汇总">
@@ -214,9 +240,10 @@ export default function Home() {
       <div className="table-wrap"><table><thead><tr>{fields.map((f,i) => <th key={`${f.key}-${i}`} style={{minWidth:f.width}}>{f.group && <span>{f.group}</span>}{f.label}</th>)}<th className="double-col"><span>未续签</span>双倍工资差额</th><th className="sticky-right">本月欠款</th><th className="sticky-right action-col"></th></tr></thead>
       <tbody>{visible.map(r => <tr key={r.id} className={r.status === "未结清" ? "open" : ""}>{fields.map((f,i) => <td key={`${String(f.key)}-${i}`}>
         {f.key === "status" ? <select aria-label={`${r.payDate}结清状态`} className={r.status === "未结清" ? "status open" : "status"} value={r.status} onChange={e=>update(r.id,f.key,e.target.value)}><option>已结清</option><option>未结清</option></select>
+        : f.key === "socialDue" || f.key === "fundDue" ? <div className="calculated-cell"><b>¥ {money(f.key === "socialDue" ? socialDueFor(r) : fundDueFor(r))}</b><small>自动计算</small></div>
         : <input aria-label={`${r.payDate}${f.label}`} className={f.key === "wageMonth" || f.key === "note" || f.key === "payDate" ? "text" : "number"} type={f.key === "wageMonth" ? "month" : f.key === "note" || f.key === "payDate" ? "text" : "number"} step="0.001" value={r[f.key]} onChange={e=>update(r.id,f.key,e.target.value)}/>}</td>)}
         <td className={`double-value ${(doubleById.get(r.id) || 0) > 0 ? "active" : ""}`}>¥ {money(doubleById.get(r.id) || 0)}</td>
-        <td className="row-total sticky-right">¥ {money(r.arrears + r.socialDue + r.fundDue + (doubleById.get(r.id) || 0))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>)}</tbody>
+        <td className="row-total sticky-right">¥ {money(r.arrears + socialDueFor(r) + fundDueFor(r) + (doubleById.get(r.id) || 0))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>)}</tbody>
       <tfoot><tr>{fields.map((f,i) => <td key={`${String(f.key)}-total`}>{i === 0 ? "总计" : f.key === "normalPay" ? `¥ ${money(totals.normal)}` : f.key === "paid" ? `¥ ${money(totals.paid)}` : f.key === "arrears" ? `¥ ${money(totals.arrears)}` : f.key === "socialDue" ? `¥ ${money(totals.social)}` : f.key === "fundDue" ? `¥ ${money(totals.fund)}` : ""}</td>)}<td>¥ {money(totals.double)}</td><td className="sticky-right">¥ {money(grandTotal)}</td><td className="sticky-right action-col"></td></tr></tfoot></table></div>
       <div className="sheet-foot"><span>显示 {visible.length} / {rows.length} 条记录 · 修改后请保存</span><span><i></i> 可编辑单元格 <b>合计欠款 = 欠薪 + 双倍工资差额 + 社保应补缴 + 公积金应补缴</b></span></div>
     </section>
