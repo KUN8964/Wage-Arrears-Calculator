@@ -4,7 +4,7 @@ Last updated: 2026-07-13
 
 | No. | Project name | Project ID | Last update | Current stage | Progress | Open issues |
 |---|---|---|---|---|---:|---|
-| 1 | 薪保计算器低成本使用改造 | proj_20260713_001 | 2026-07-13 | 合同月薪金额卡已发布 | 100% | 下一阶段：地区政策自动计算的首批支持范围尚未确认 |
+| 1 | 薪保计算器低成本使用改造 | proj_20260713_001 | 2026-07-13 | 缴费比例自动反推与最低比例兜底 | 97% | 验收通过，待发布 |
 
 ## 薪保计算器低成本使用改造
 
@@ -14,5 +14,5 @@ Last updated: 2026-07-13
 - Reference project: 当前已上线的薪保计算器。
 - Stack: Next.js 16、React 19、vinext、浏览器 localStorage、Sites 私有部署。
 - Documents: `web-pm-projects/proj_20260713_001/`
-- LOCKED contracts: 17
+- LOCKED contracts: 18
 - PROTECTED decisions: 3

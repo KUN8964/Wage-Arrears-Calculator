@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：合同月薪金额卡已发布。
-- 当前交付目标：优化合同月薪输入视觉，不改变字段语义和计算公式。
+- 当前阶段：缴费比例自动反推与最低比例兜底实现中。
+- 当前交付目标：以合同月薪作为缺省缴费基数，减少普通用户对基数和比例的手工换算。
 
 ## Stage Checklist
 
@@ -23,6 +23,7 @@
 | 10 | 增强版本提交与部署 | Completed |
 | 11 | 移除合同开始日并简化双倍工资问题 | Completed |
 | 12 | 合同月薪金额卡视觉改造 | Completed |
+| 13 | 缴费基数回退、实缴比例反推与最低比例兜底 | Ready to publish |
 
 ## MVP Scope After Confirmation
 
@@ -35,5 +36,5 @@
 
 ## Locked Contract Summary
 
-- 17 项 LOCKED 合同已记录在 `findings.md`；其中 7 项来自用户持续确认。
+- 18 项 LOCKED 合同已记录在 `findings.md`；其中 8 项来自用户持续确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。

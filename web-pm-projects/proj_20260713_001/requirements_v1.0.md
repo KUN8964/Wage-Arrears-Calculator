@@ -32,7 +32,7 @@ Before generating code, output:
 - Description: 将专业计算表改造成普通用户能用生活事实完成的引导式计算器，同时保留专业精算能力。
 - Target users: 普通劳动者优先，法律服务和人事核算人员为次级用户。
 - Product perspective: 首次使用成本优先，计算透明度与可复核性不可牺牲。
-- Current status: 用户已确认默认引导模式；第一阶段实现完成，等待验证与发布。
+- Current status: 用户已确认默认引导模式与缴费比例自动反推规则；实现与验证进行中。
 
 ## LOCKED Contracts
 
@@ -50,9 +50,10 @@ Before generating code, output:
 12. 初始必填仅为入职日期、统计截止日期和合同月薪；截止日期默认当天。
 13. 四类事项按用户选择条件展示，未选择事项不渲染问题且不进入合计。
 14. 实缴开始月允许系统推定，但必须显式标识并允许修改。
-15. 本阶段先展示汇总和异常月份，不启用无来源政策比例，社保、公积金公司比例由用户手动填写。
-16. 社保、公积金模块优先填写公司实际每月缴纳金额；公积金提示并校验单位 5%–12% 法定范围，社保显示养老单位部分 16% 依据且明确合计比例需按参保地核定。
+15. 本阶段先展示汇总和异常月份，不引入地区政策库；最低比例显示默认来源边界并允许用户按当地规则修改。
+16. 社保、公积金模块优先填写公司实际每月缴纳金额；公积金默认最低单位比例 5%，社保以养老单位部分 16% 作为保守最低基线且明确合计比例需按参保地调高。
 17. 双倍工资引导仅询问合同期满日，不询问未参与计算的合同开始日；字段文案使用“合同上写的最后一天”。
+18. 未填写缴费基数时按合同月薪作为缺省测算基数；实缴比例按“公司实际月缴金额 ÷ 测算基数”反推，系统采用反推比例与用户确认的当地最低比例中的较高值；基数和最低比例均可手工修改。
 
 ## PROTECTED Product Decisions
 
@@ -120,12 +121,14 @@ Before generating code, output:
 - 选择“是”后填写公司最近一个月实缴金额和最后实缴月份。
 - 实缴开始月默认等于入职月份，并显示“系统推定”。
 - 连续区间内使用最近月金额；用户可通过粘贴记录或异常月编辑覆盖。
-- 应缴计算提供两种互斥模式：政策自动计算、手动输入应缴基数和公司比例。
+- 未填写缴费基数时按合同月薪推定，折叠入口允许手工修改。
+- 反推实缴比例，并与可修改的当地最低公司比例取高后计算应缴。
 
 #### 公积金模块
 
 - 问题结构与社保一致，数据与计算独立。
 - 不得默认社保和公积金实缴期间或金额相同。
+- 最低单位比例默认 5%，提供 5%、7%、10%、12% 快捷值并允许手工修改。
 
 ### Step 4 · 推定确认
 
@@ -187,11 +190,10 @@ Before generating code, output:
 - `actualMonthlyAmount`: non-negative number
 - `actualStartMonth`: `YYYY-MM`
 - `actualEndMonth`: `YYYY-MM`
-- `calculationMode`: `policy | manual`
-- `policyRegion`: selected policy profile identifier
-- `policyPeriod`: selected policy effective-period identifier
-- `manualBase`: non-negative number
-- `manualCompanyRate`: non-negative percentage
+- `calculationBase`: non-negative number；为空时回退到 `contractPay`
+- `minimumCompanyRate`: positive percentage；社保默认 16，公积金默认 5
+- `inferredActualRate`: `actualMonthlyAmount / effectiveCalculationBase * 100`
+- `effectiveCompanyRate`: `max(inferredActualRate, minimumCompanyRate)`
 - `monthlyOverrides`: map keyed by `YYYY-MM`
 
 旧字段 `socialPaidStartMonth`、`socialPaidEndMonth`、`fundPaidStartMonth`、`fundPaidEndMonth` 必须迁移到对应 Contribution Setup；旧月度行不得重建或丢失。
@@ -242,7 +244,7 @@ Before generating code, output:
 - 仅计算欠薪：完成结果所需人工输入不超过五项。
 - 连续缴费且金额稳定的全项测算：除事项选择外，人工输入或选择不超过十项。
 - 任一模块未选择时，该模块可见输入为零。
-- 用户不需要先理解“缴费基数”和“公司比例”才能进入结果页；缺少政策数据时必须清楚标记该项无法形成可靠金额，而不是静默猜测。
+- 用户不需要先理解“缴费基数”和“公司比例”才能进入结果页；系统展示合同月薪回退、比例反推和最低比例兜底过程，并提示最终以当地核定为准。
 
 ## Empty, Error And Recovery States
 
@@ -266,6 +268,7 @@ Before generating code, output:
 9. 手机宽度下每一步无横向滚动；完整台账允许自身横向滚动。
 10. 所有新增行为有失败测试、通过测试和成功构建证据。
 11. 社保、公积金主问题展示“公司实际每月缴纳金额”；公积金可快捷选择 5%、7%、10%、12%，社保不得伪称存在全国统一合计比例区间。
+12. 未填缴费基数时，生成行的基数等于合同月薪；实缴反推比例低于最低比例时采用最低比例，高于最低比例时采用反推比例。
 
 ## Verification Commands
 

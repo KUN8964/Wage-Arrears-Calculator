@@ -31,6 +31,19 @@ test("asks for actual company contributions and explains statutory rate ranges",
   assert.match(page, /修改测算基数/);
 });
 
+test("infers paid rates from contract salary and applies editable legal floors", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /socialBase\|\|setup\.contractPay/);
+  assert.match(page, /fundBase\|\|setup\.contractPay/);
+  assert.match(page, /Math\.max\(inferredSocialPaidRate/);
+  assert.match(page, /Math\.max\(inferredFundPaidRate/);
+  assert.match(page, /当地最低公司比例（可修改）/);
+  assert.match(page, /实际缴纳金额 ÷ 测算基数/);
+  assert.match(page, /系统采用比例/);
+  assert.match(page, /socialRate: 16/);
+  assert.match(page, /fundRate: 5/);
+});
+
 test("does not ask users for a contract start date that the calculation does not use", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(page, /劳动合同开始日/);
