@@ -39,8 +39,12 @@ test("keeps calculator data local and portable", async () => {
   assert.doesNotMatch(page, /<span>每月应发工资<\/span>/);
   assert.doesNotMatch(page, /<span>每月已发工资<\/span>/);
   assert.match(page, /monthCountBetween/);
-  assert.match(page, /个补缴月份/);
+  assert.match(page, /尚欠 \{socialMonths\} 个月/);
   assert.match(page, /socialPaid.*socialBase.*socialRate/);
-  assert.match(page, /应缴基数 × 比例 − 实际已缴/);
+  assert.match(page, /社保公司实缴开始月/);
+  assert.match(page, /公积金公司实缴开始月/);
+  assert.match(page, /paidMonthsWithin/);
+  assert.match(page, /实缴 \{socialPaidMonths\} 个月/);
+  assert.match(page, /公司应缴基数 × 公司比例 − 公司实际已缴/);
   assert.doesNotMatch(page, /fetch\(|signIn|requireChatGPTUser/);
 });
