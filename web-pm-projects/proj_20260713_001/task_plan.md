@@ -2,7 +2,7 @@
 
 ## Current Progress
 
-- 当前阶段：合同月薪金额卡验证完成，待发布。
+- 当前阶段：合同月薪金额卡已发布。
 - 当前交付目标：优化合同月薪输入视觉，不改变字段语义和计算公式。
 
 ## Stage Checklist
@@ -22,7 +22,7 @@
 | 9 | 实缴金额主输入与法规比例提示 | Completed |
 | 10 | 增强版本提交与部署 | Completed |
 | 11 | 移除合同开始日并简化双倍工资问题 | Completed |
-| 12 | 合同月薪金额卡视觉改造 | In progress |
+| 12 | 合同月薪金额卡视觉改造 | Completed |
 
 ## MVP Scope After Confirmation
 
