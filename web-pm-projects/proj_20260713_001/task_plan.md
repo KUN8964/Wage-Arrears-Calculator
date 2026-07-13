@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：引导模式第一阶段已发布。
-- 当前交付目标：默认引导、条件问题、推定确认、异常月结果与折叠精算明细。
+- 当前阶段：缴费金额与法规比例提示增强待发布。
+- 当前交付目标：把公司实际缴纳金额设为主输入，并提供准确的比例法规提示。
 
 ## Stage Checklist
 
@@ -19,6 +19,8 @@
 | 6 | 用户确认与持续迭代 | Done |
 | 7 | 引导模式第一阶段实现 | Completed |
 | 8 | 回归验证、提交与部署 | Completed |
+| 9 | 实缴金额主输入与法规比例提示 | Completed |
+| 10 | 增强版本提交与部署 | In progress |
 
 ## MVP Scope After Confirmation
 
@@ -31,5 +33,5 @@
 
 ## Locked Contract Summary
 
-- 15 项 LOCKED 合同已记录在 `findings.md`；其中 5 项来自本次用户确认。
+- 16 项 LOCKED 合同已记录在 `findings.md`；其中 6 项来自用户持续确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。
