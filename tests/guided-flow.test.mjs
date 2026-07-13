@@ -71,3 +71,10 @@ test("places the custom arrears rate after 100 percent at matching height", asyn
   assert.match(css, /\.wage-rate-choices\{grid-template-columns:repeat\(5/);
   assert.match(css, /\.wage-rate-choices \.custom-rate-input\{height:31px/);
 });
+
+test("does not display already-paid normal wages in the result summary", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(page, /另有已发工资/);
+  assert.match(page, /后续补发工资/);
+  assert.match(page, /totals\.normal/);
+});
