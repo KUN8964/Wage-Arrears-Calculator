@@ -37,3 +37,13 @@ test("does not ask users for a contract start date that the calculation does not
   assert.match(page, /合同上写的最后一天/);
   assert.match(page, /双倍工资只需要合同期满日/);
 });
+
+test("presents contract salary as a monthly amount card instead of a table cell", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /salary-field/);
+  assert.match(page, /salary-input/);
+  assert.match(page, /元\/月/);
+  assert.match(page, /劳动合同约定的税前月工资/);
+  assert.match(css, /\.salary-input/);
+});
