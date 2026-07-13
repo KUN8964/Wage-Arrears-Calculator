@@ -2,7 +2,7 @@
 
 ## Current Progress
 
-- 当前阶段：合同问题简化验证中。
+- 当前阶段：合同问题简化已发布。
 - 当前交付目标：移除不参与计算的合同开始日，只保留易懂的合同期满日问题。
 
 ## Stage Checklist
@@ -21,7 +21,7 @@
 | 8 | 回归验证、提交与部署 | Completed |
 | 9 | 实缴金额主输入与法规比例提示 | Completed |
 | 10 | 增强版本提交与部署 | Completed |
-| 11 | 移除合同开始日并简化双倍工资问题 | In progress |
+| 11 | 移除合同开始日并简化双倍工资问题 | Completed |
 
 ## MVP Scope After Confirmation
 
