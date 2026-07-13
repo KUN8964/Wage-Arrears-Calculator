@@ -2,7 +2,7 @@
 
 ## Current Progress
 
-- 当前阶段：引导模式第一阶段验证与发布。
+- 当前阶段：引导模式第一阶段已发布。
 - 当前交付目标：默认引导、条件问题、推定确认、异常月结果与折叠精算明细。
 
 ## Stage Checklist
@@ -18,7 +18,7 @@
 | 5.5 | 测试优先实施计划 | Done |
 | 6 | 用户确认与持续迭代 | Done |
 | 7 | 引导模式第一阶段实现 | Completed |
-| 8 | 回归验证、提交与部署 | In progress |
+| 8 | 回归验证、提交与部署 | Completed |
 
 ## MVP Scope After Confirmation
 
