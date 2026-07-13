@@ -8,11 +8,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = requestHeaders.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
   const image = `${protocol}://${host}/og.png`;
   return {
-    title: "薪保清算台｜欠薪、社保与公积金测算",
-    description: "按月核对工资、社保与公积金漏缴情况，自动汇总欠款。",
+    title: "薪保计算器｜欠薪、双倍工资与社保公积金测算",
+    description: "免登录、开箱即用的工资、社保与公积金欠款计算器，数据仅保存在本机。",
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
-    openGraph: { title: "薪保清算台", description: "欠薪 · 社保 · 公积金 一表算清", images: [image] },
-    twitter: { card: "summary_large_image", title: "薪保清算台", description: "欠薪 · 社保 · 公积金 一表算清", images: [image] },
+    openGraph: { title: "薪保计算器", description: "欠薪 · 双倍工资 · 社保 · 公积金 一表算清", images: [image] },
+    twitter: { card: "summary_large_image", title: "薪保计算器", description: "免登录，打开即可测算", images: [image] },
   };
 }
 

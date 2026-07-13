@@ -1,98 +1,52 @@
-# vinext-starter
+# 薪保计算器
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+一个免登录、开箱即用的欠薪、未续签双倍工资、社保与公积金补缴测算工具。数据默认只保存在用户当前浏览器中，不上传业务数据。
 
-## Prerequisites
+## 功能
 
-- Node.js `>=22.13.0`
+- 按起止月份批量生成工资明细
+- 逐月计算欠薪、社保及公积金补缴
+- 合同期满后继续用工的双倍工资差额测算（最多 11 个月）
+- 本机保存、新建测算、JSON 备份与恢复
+- CSV 明细导出
+- 手机与桌面端自适应
 
-## Quick Start
+## 本地运行
+
+需要 Node.js `>=22.13.0`。
 
 ```bash
 npm install
 npm run dev
+```
+
+打开终端输出的本地地址即可使用。
+
+## 构建与检查
+
+```bash
 npm run build
+npm test
 ```
 
-This starter does not use `wrangler.jsonc`.
+构建产物位于 `dist/`。项目基于 Next.js、React、Tailwind CSS 与 vinext，可部署到兼容 Cloudflare Workers 的环境。
 
-## Included Shape
+## 数据与隐私
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+- 页面不要求注册或登录。
+- 保存的数据写入浏览器 `localStorage`。
+- 清理浏览器数据会同时删除本机测算，重要案例请使用“备份”导出 JSON 文件。
+- JSON 文件可在另一台设备或另一浏览器中通过“导入”恢复。
 
-## Workspace Auth Headers
+## 计算口径提示
 
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
+本工具只用于初步核对。工资基数、社保和公积金比例、双倍工资起止日期及例外情形可能因地区和具体案件不同，正式主张前请核对当地现行规定或咨询专业人士。
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+## 推送到 Git 仓库
 
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+git remote add origin <你的仓库地址>
+git push -u origin main
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+`.openai/hosting.json` 仅用于当前 Sites 托管。如部署到其他平台，可按目标平台要求调整或删除该文件。
