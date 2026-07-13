@@ -31,6 +31,13 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /生成月度明细/);
   assert.match(page, /入职日期/);
   assert.match(page, /统计截止日期/);
+  assert.match(page, /开始欠薪月份/);
+  assert.match(page, /首个欠薪月已发比例/);
+  assert.match(page, /劳动合同开始日/);
+  assert.match(page, /automaticDoubleRuleFor/);
+  assert.match(page, /已自动启用/);
+  assert.doesNotMatch(page, /<span>每月应发工资<\/span>/);
+  assert.doesNotMatch(page, /<span>每月已发工资<\/span>/);
   assert.match(page, /monthCountBetween/);
   assert.match(page, /个补缴月份/);
   assert.match(page, /socialPaid.*socialBase.*socialRate/);

@@ -25,8 +25,9 @@ type Row = {
 
 type DoublePayRule = { enabled: boolean; contractEnd: string; continuedUntil: string };
 const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedUntil: "" };
-type QuickSetup = { employmentDate: string; cutoffDate: string; contractPay: number; duePay: number; actualPay: number; socialPaid: number; socialBase: number; socialRate: number; fundPaid: number; fundBase: number; fundRate: number };
-const defaultSetup: QuickSetup = { employmentDate: "", cutoffDate: "", contractPay: 0, duePay: 0, actualPay: 0, socialPaid: 0, socialBase: 0, socialRate: 0, fundPaid: 0, fundBase: 0, fundRate: 0 };
+type QuickSetup = { employmentDate: string; cutoffDate: string; contractStart: string; contractEnd: string; contractPay: number; arrearsStartMonth: string; firstArrearsPaidRate: number; socialPaid: number; socialBase: number; socialRate: number; fundPaid: number; fundBase: number; fundRate: number };
+type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
+const defaultSetup: QuickSetup = { employmentDate: "", cutoffDate: "", contractStart: "", contractEnd: "", contractPay: 0, arrearsStartMonth: "", firstArrearsPaidRate: 0, socialPaid: 0, socialBase: 0, socialRate: 0, fundPaid: 0, fundBase: 0, fundRate: 0 };
 
 const exampleRows: Row[] = [
   [1,"2025/06",0,"",0,"已结清",0,0,20000,384.96,4812,3979.256,250,2490,2101.2],
@@ -80,9 +81,12 @@ const addMonths = (date: Date, months: number) => {
   return new Date(date.getFullYear(), targetMonth, Math.min(date.getDate(), lastDay));
 };
 const dateLabel = (date: Date | null) => date ? date.toLocaleDateString("zh-CN") : "—";
-const normalizeSetup = (old: Partial<QuickSetup> & { startMonth?: string; endMonth?: string } = {}): QuickSetup => {
+const normalizeSetup = (old: LegacyQuickSetup = {}): QuickSetup => {
   const oldEnd = old.endMonth ? new Date(Number(old.endMonth.slice(0,4)), Number(old.endMonth.slice(5,7)), 0) : null;
-  return {...defaultSetup, ...old, employmentDate:old.employmentDate || (old.startMonth ? `${old.startMonth}-01` : ""), cutoffDate:old.cutoffDate || (oldEnd ? `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,"0")}-${String(oldEnd.getDate()).padStart(2,"0")}` : "")};
+  const employmentDate = old.employmentDate || (old.startMonth ? `${old.startMonth}-01` : "");
+  const cutoffDate = old.cutoffDate || (oldEnd ? `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,"0")}-${String(oldEnd.getDate()).padStart(2,"0")}` : "");
+  const {startMonth: _startMonth, endMonth: _endMonth, duePay: _duePay, actualPay: _actualPay, ...current} = old;
+  return {...defaultSetup, ...current, employmentDate, cutoffDate, contractStart:old.contractStart || employmentDate};
 };
 const weekdayCount = (start: Date, endExclusive: Date) => {
   let count = 0;
@@ -107,6 +111,14 @@ function doublePayForRow(row: Row, rule: DoublePayRule) {
   if (overlapEnd <= overlapStart) return 0;
   const monthWorkdays = weekdayCount(monthStart, monthEnd);
   return monthWorkdays ? Number(row.contractPay || 0) * weekdayCount(overlapStart, overlapEnd) / monthWorkdays : 0;
+}
+
+function automaticDoubleRuleFor(setup: QuickSetup, fallback: DoublePayRule): DoublePayRule {
+  if (!setup.contractEnd || !setup.cutoffDate) return fallback;
+  const contractEnd = atMidnight(setup.contractEnd), continuedUntil = atMidnight(setup.cutoffDate);
+  if (!contractEnd || !continuedUntil) return defaultRule;
+  const eligibleStart = addDays(contractEnd, 1);
+  return { contractEnd:setup.contractEnd, continuedUntil:setup.cutoffDate, enabled:addDays(continuedUntil, 1) >= addMonths(eligibleStart, 1) };
 }
 
 const fields: { key: keyof Row; label: string; group?: string; width?: number }[] = [
@@ -136,16 +148,18 @@ export default function Home() {
       setRows(parsed.map((row, index) => normalizeRow({ ...row, wageMonth: row.wageMonth || exampleRows[index]?.wageMonth || "" } as Row, index)));
     } catch { /* use seed data */ }
     const cachedRule = localStorage.getItem("xinbao-double-rule");
-    if (cachedRule) try { setDoubleRule(JSON.parse(cachedRule)); } catch { /* use defaults */ }
+    let restoredRule = defaultRule;
+    if (cachedRule) try { restoredRule = {...defaultRule, ...JSON.parse(cachedRule)}; setDoubleRule(restoredRule); } catch { /* use defaults */ }
     const cachedMeta = localStorage.getItem("xinbao-meta");
     if (cachedMeta) try {
       const meta = JSON.parse(cachedMeta), old = meta.setup || {};
       setCaseName(meta.caseName || "我的欠款测算");
-      setSetup(normalizeSetup(old));
+      setSetup(normalizeSetup({...old, contractEnd:old.contractEnd || restoredRule.contractEnd, cutoffDate:old.cutoffDate || restoredRule.continuedUntil}));
     } catch { /* use defaults */ }
   }, []);
 
-  const doubleById = useMemo(() => new Map(rows.map(row => [row.id, doublePayForRow(row, doubleRule)])), [rows, doubleRule]);
+  const effectiveDoubleRule = useMemo(() => automaticDoubleRuleFor(setup, doubleRule), [setup, doubleRule]);
+  const doubleById = useMemo(() => new Map(rows.map(row => [row.id, doublePayForRow(row, effectiveDoubleRule)])), [rows, effectiveDoubleRule]);
   const totals = useMemo(() => rows.reduce((a, r) => ({
     normal: a.normal + Number(r.normalPay || 0), paid: a.paid + Number(r.paid || 0),
     arrears: a.arrears + Number(r.arrears || 0), social: a.social + socialDueFor(r),
@@ -164,8 +178,8 @@ export default function Home() {
   } : r));
 
   const rowsWithComputedGaps = () => rows.map(r => ({...r, socialDue:socialDueFor(r), fundDue:fundDueFor(r)}));
-  const save = () => { localStorage.setItem("xinbao-rows", JSON.stringify(rowsWithComputedGaps())); localStorage.setItem("xinbao-double-rule", JSON.stringify(doubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({caseName,setup})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
-  const addRow = () => setRows(prev => [...prev, { ...(prev[prev.length - 1] || blankRow()), id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"新增月份", paid:0, status:"未结清", duePay:Number(setup.duePay || setup.contractPay || 0), arrears:Number(setup.duePay || setup.contractPay || 0), contractPay:Number(setup.contractPay || 0), socialPaid:Number(setup.socialPaid||0), socialBase:Number(setup.socialBase||setup.contractPay||0), socialRate:Number(setup.socialRate||0), fundPaid:Number(setup.fundPaid||0), fundBase:Number(setup.fundBase||setup.contractPay||0), fundRate:Number(setup.fundRate||0) }]);
+  const save = () => { localStorage.setItem("xinbao-rows", JSON.stringify(rowsWithComputedGaps())); localStorage.setItem("xinbao-double-rule", JSON.stringify(effectiveDoubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({caseName,setup})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
+  const addRow = () => setRows(prev => [...prev, { ...(prev[prev.length - 1] || blankRow()), id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"新增欠薪月份", paid:0, status:"未结清", duePay:Number(setup.contractPay || 0), arrears:Number(setup.contractPay || 0), contractPay:Number(setup.contractPay || 0), socialPaid:Number(setup.socialPaid||0), socialBase:Number(setup.socialBase||setup.contractPay||0), socialRate:Number(setup.socialRate||0), fundPaid:Number(setup.fundPaid||0), fundBase:Number(setup.fundBase||setup.contractPay||0), fundRate:Number(setup.fundRate||0) }]);
   const remove = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
   const exportCsv = () => {
     const header = [...fields.map(f => `${f.group ? f.group + "-" : ""}${f.label}`), "未续签双倍工资差额", "合计欠款"];
@@ -174,13 +188,13 @@ export default function Home() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪保清算明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:2, caseName, setup, doubleRule, rows:rowsWithComputedGaps() }, null, 2);
+    const data = JSON.stringify({ version:3, caseName, setup, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
   };
   const importData = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => { try { const data = JSON.parse(String(reader.result)); if (!Array.isArray(data.rows)) throw new Error(); setRows(data.rows.map((row:Row,index:number)=>normalizeRow(row,index))); setDoubleRule({...defaultRule,...data.doubleRule}); setSetup(normalizeSetup(data.setup)); setCaseName(data.caseName || "导入的欠款测算"); } catch { alert("文件无法识别，请选择由本计算器导出的 JSON 文件。"); } };
+    reader.onload = () => { try { const data = JSON.parse(String(reader.result)); if (!Array.isArray(data.rows)) throw new Error(); const importedRule={...defaultRule,...data.doubleRule}; setRows(data.rows.map((row:Row,index:number)=>normalizeRow(row,index))); setDoubleRule(importedRule); setSetup(normalizeSetup({...data.setup,contractEnd:data.setup?.contractEnd||importedRule.contractEnd,cutoffDate:data.setup?.cutoffDate||importedRule.continuedUntil})); setCaseName(data.caseName || "导入的欠款测算"); } catch { alert("文件无法识别，请选择由本计算器导出的 JSON 文件。"); } };
     reader.readAsText(file);
   };
   const generateRows = () => {
@@ -189,13 +203,20 @@ export default function Home() {
     if (!startDate || !endDate) return alert("日期格式无法识别，请重新选择。");
     const sy=startDate.getFullYear(), sm=startDate.getMonth()+1, count=monthCountBetween(setup.employmentDate,setup.cutoffDate);
     if (count < 1 || count > 60) return alert("测算期间需为 1—60 个月。");
+    if (setup.contractStart && setup.contractEnd && setup.contractStart > setup.contractEnd) return alert("劳动合同开始日不能晚于合同期满日。");
+    const firstMonth=`${sy}-${String(sm).padStart(2,"0")}`, lastMonth=`${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,"0")}`;
+    if (setup.arrearsStartMonth && (setup.arrearsStartMonth < firstMonth || setup.arrearsStartMonth > lastMonth)) return alert("开始欠薪月份需位于入职月份和统计截止月份之间。");
+    const firstPaidRate=Math.min(100,Math.max(0,Number(setup.firstArrearsPaidRate||0)));
     const generated = Array.from({length:count}, (_,i) => {
       const date = new Date(sy, sm - 1 + i, 1), wageMonth = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
-      const due = Number(setup.duePay || setup.contractPay || 0), actual = Number(setup.actualPay || 0);
+      const due = Number(setup.contractPay || 0), beforeArrears=!setup.arrearsStartMonth || wageMonth < setup.arrearsStartMonth, firstArrears=wageMonth === setup.arrearsStartMonth;
+      const actual = beforeArrears ? due : firstArrears ? due*firstPaidRate/100 : 0;
+      const arrears=Math.max(0,due-actual);
       const socialPaid=Number(setup.socialPaid||0), socialBase=Number(setup.socialBase||setup.contractPay||0), socialRate=Number(setup.socialRate||0);
       const fundPaid=Number(setup.fundPaid||0), fundBase=Number(setup.fundBase||setup.contractPay||0), fundRate=Number(setup.fundRate||0);
       const socialDue=Math.max(0,socialBase*socialRate/100-socialPaid), fundDue=Math.max(0,fundBase*fundRate/100-fundPaid);
-      return { id:Date.now()+i, wageMonth, payDate:"", normalPay:actual, note:`${date.getMonth()+1}月工资`, paid:0, status:due-actual>0||socialDue>0||fundDue>0?"未结清":"已结清", duePay:due, arrears:Math.max(0,due-actual), contractPay:Number(setup.contractPay||0), socialPaid, socialBase, socialRate, socialDue, fundPaid, fundBase, fundRate, fundDue } as Row;
+      const note=beforeArrears ? `${date.getMonth()+1}月工资已正常发放` : firstArrears ? `首个欠薪月，已发${firstPaidRate}%` : `${date.getMonth()+1}月工资默认未发`;
+      return { id:Date.now()+i, wageMonth, payDate:"", normalPay:actual, note, paid:0, status:arrears>0||socialDue>0||fundDue>0?"未结清":"已结清", duePay:due, arrears, contractPay:Number(setup.contractPay||0), socialPaid, socialBase, socialRate, socialDue, fundPaid, fundBase, fundRate, fundDue } as Row;
     });
     if (rows.some(r => r.wageMonth || r.duePay || r.normalPay) && !confirm("批量生成会替换当前明细，是否继续？")) return;
     setRows(generated);
@@ -209,18 +230,20 @@ export default function Home() {
     </header>
 
     <section className="hero">
-      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪保计算器</p><h1>工资与社保欠款，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写月份和工资数据，即可计算欠薪、未续签双倍工资、社保及公积金补缴，并生成可导出的测算底稿。</p></div>
+      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪保计算器</p><h1>工资与社保欠款，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间、开始欠薪月份和合同期限，即可计算欠薪、未续签双倍工资、社保及公积金补缴，并生成可导出的测算底稿。</p></div>
       <div className="grand-card"><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></div>
     </section>
 
     <section className="quick-card">
       <div className="quick-head"><div><p className="eyebrow">QUICK START / 快速开始</p><h2>输入任职期间，按月生成明细</h2></div><label className="case-name"><span>测算名称</span><input value={caseName} onChange={e=>setCaseName(e.target.value)} placeholder="例如：2026年工资欠款测算"/></label></div>
       <div className="quick-grid">
-        <label><span>入职日期</span><input type="date" value={setup.employmentDate} onChange={e=>setSetup(s=>({...s,employmentDate:e.target.value}))}/></label>
+        <label><span>入职日期</span><input type="date" value={setup.employmentDate} onChange={e=>setSetup(s=>({...s,employmentDate:e.target.value,contractStart:s.contractStart||e.target.value}))}/></label>
         <label><span>统计截止日期</span><input type="date" value={setup.cutoffDate} onChange={e=>setSetup(s=>({...s,cutoffDate:e.target.value}))}/></label>
+        <label><span>劳动合同开始日</span><input type="date" value={setup.contractStart} onChange={e=>setSetup(s=>({...s,contractStart:e.target.value}))}/></label>
+        <label><span>劳动合同期满日</span><input type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/></label>
         <label><span>合同月薪</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.contractPay || ""} placeholder="0" onChange={e=>setSetup(s=>({...s,contractPay:Number(e.target.value)}))}/></div></label>
-        <label><span>每月应发工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.duePay || ""} placeholder="默认等于合同月薪" onChange={e=>setSetup(s=>({...s,duePay:Number(e.target.value)}))}/></div></label>
-        <label><span>每月已发工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.actualPay || ""} placeholder="0" onChange={e=>setSetup(s=>({...s,actualPay:Number(e.target.value)}))}/></div></label>
+        <label><span>开始欠薪月份（可留空）</span><input type="month" value={setup.arrearsStartMonth} onChange={e=>setSetup(s=>({...s,arrearsStartMonth:e.target.value}))}/></label>
+        <label><span>首个欠薪月已发比例</span><div className="money-input"><i>%</i><input type="number" min="0" max="100" step="0.01" value={setup.firstArrearsPaidRate || ""} placeholder="例如只发30%则填30" onChange={e=>setSetup(s=>({...s,firstArrearsPaidRate:Number(e.target.value)}))}/></div></label>
         <label><span>社保每月实际已缴</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialPaid || ""} placeholder="公司每月实际缴纳" onChange={e=>setSetup(s=>({...s,socialPaid:Number(e.target.value)}))}/></div></label>
         <label><span>社保应缴基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialBase || ""} placeholder="默认使用合同月薪" onChange={e=>setSetup(s=>({...s,socialBase:Number(e.target.value)}))}/></div></label>
         <label><span>社保应缴比例</span><div className="money-input"><i>%</i><input type="number" min="0" step="0.01" value={setup.socialRate || ""} placeholder="填写单位或综合比例" onChange={e=>setSetup(s=>({...s,socialRate:Number(e.target.value)}))}/></div></label>
@@ -230,26 +253,26 @@ export default function Home() {
         <button className="generate" onClick={generateRows}><span>生成月度明细</span><small>生成后仍可逐项修改</small></button>
       </div>
       <div className="formula-preview"><div><span>社保补缴 · {setupMonths} 个月</span><strong>¥ {money(Math.max(0, Number(setup.socialBase||setup.contractPay||0)*Number(setup.socialRate||0)/100-Number(setup.socialPaid||0))*setupMonths)}</strong><small>每月 ¥ {money(Math.max(0, Number(setup.socialBase||setup.contractPay||0)*Number(setup.socialRate||0)/100-Number(setup.socialPaid||0)))}</small></div><div><span>公积金补缴 · {setupMonths} 个月</span><strong>¥ {money(Math.max(0, Number(setup.fundBase||setup.contractPay||0)*Number(setup.fundRate||0)/100-Number(setup.fundPaid||0))*setupMonths)}</strong><small>每月 ¥ {money(Math.max(0, Number(setup.fundBase||setup.contractPay||0)*Number(setup.fundRate||0)/100-Number(setup.fundPaid||0)))}</small></div><p><b>系统公式：</b>应缴基数 × 比例 − 实际已缴。实际已缴填单位金额时，比例也填单位比例；填单位与个人合计金额时，比例应填双方比例之和。各地费率和基数上下限不同，请按缴费地当期政策填写。</p></div>
-      <p className="quick-tip"><b>月份口径：</b>入职月份和截止月份均计入统计，当前共 {setupMonths} 个月；不足整月默认按一个缴费月生成，可在明细中删除或单独调整。系统将逐月计算并累计补缴金额。</p>
+      <p className="quick-tip"><b>欠薪口径：</b>开始欠薪前按工资已足额发放；首个欠薪月按填写的已发比例计算（例如只发 30%，欠薪即为 70%）；之后月份默认未发，可在明细中逐月修改。入职月份和截止月份均计入，当前共 {setupMonths} 个月。</p>
     </section>
 
     <section className="metrics" aria-label="测算汇总">
       <article><span className="metric-icon wage">工</span><div><small>欠薪合计</small><strong>¥ {money(totals.arrears)}</strong><p>占总欠款 {grandTotal ? (totals.arrears / grandTotal * 100).toFixed(1) : 0}%</p></div></article>
       <article><span className="metric-icon social">社</span><div><small>社保应补缴</small><strong>¥ {money(totals.social)}</strong><p>{socialMonths} 个补缴月份 · 共 {rows.length} 个月</p></div></article>
       <article><span className="metric-icon fund">积</span><div><small>公积金应补缴</small><strong>¥ {money(totals.fund)}</strong><p>{fundMonths} 个补缴月份 · 共 {rows.length} 个月</p></div></article>
-      <article><span className="metric-icon double">2×</span><div><small>未续签双倍工资差额</small><strong>¥ {money(totals.double)}</strong><p>{doubleRule.enabled ? "已启用 · 最多支持 11 个月" : "规则当前未启用"}</p></div></article>
+      <article><span className="metric-icon double">2×</span><div><small>未续签双倍工资差额</small><strong>¥ {money(totals.double)}</strong><p>{effectiveDoubleRule.enabled ? "已自动启用 · 最多支持 11 个月" : "尚未满足超期 1 个月"}</p></div></article>
       <article className="settled"><span className="metric-icon paid">✓</span><div><small>后续补发工资</small><strong>¥ {money(totals.paid)}</strong><p>另有已发工资 ¥ {money(totals.normal)}</p></div></article>
     </section>
 
-    <section className={`rule-card ${doubleRule.enabled ? "enabled" : ""}`}>
-      <div className="rule-title"><span className="rule-badge">2×</span><div><p className="eyebrow">DOUBLE PAY RULE / 未续签双倍工资</p><h2>合同期满后持续用工</h2></div><label className="switch"><input type="checkbox" checked={doubleRule.enabled} onChange={e => setDoubleRule(rule => ({...rule, enabled:e.target.checked}))}/><span></span><b>{doubleRule.enabled ? "已启用" : "未启用"}</b></label></div>
+    <section className={`rule-card ${effectiveDoubleRule.enabled ? "enabled" : ""}`}>
+      <div className="rule-title"><span className="rule-badge">2×</span><div><p className="eyebrow">DOUBLE PAY RULE / 未续签双倍工资</p><h2>合同期限与超期用工自动判定</h2></div><div className={`auto-rule ${effectiveDoubleRule.enabled ? "on" : ""}`}><b>{effectiveDoubleRule.enabled ? "已自动启用" : "等待满足条件"}</b><small>无需手动开关</small></div></div>
       <div className="rule-fields">
-        <label><span>劳动合同期满日</span><input type="date" value={doubleRule.contractEnd} onChange={e => setDoubleRule(rule => ({...rule, contractEnd:e.target.value}))}/><small>双倍工资从期满次日起算</small></label>
+        <label><span>劳动合同期限</span><div className="rule-date-value">{setup.contractStart || "未填写"} → {setup.contractEnd || "未填写"}</div><small>请在快速开始中填写合同开始日和期满日</small></label>
         <span className="rule-arrow">→</span>
-        <label><span>持续用工截止日</span><input type="date" value={doubleRule.continuedUntil} onChange={e => setDoubleRule(rule => ({...rule, continuedUntil:e.target.value}))}/><small>可填补签或实际离职前一日</small></label>
-        <div className="rule-result"><span>规则测算结果</span><strong>¥ {money(totals.double)}</strong><small>{(() => { const end = atMidnight(doubleRule.contractEnd); const until = atMidnight(doubleRule.continuedUntil); if (!doubleRule.enabled) return "启用后参与合计"; if (!end || !until) return "请完整填写两个日期"; const start = addDays(end,1); if (addDays(until,1) < addMonths(start,1)) return "持续用工未满 1 个月，不触发"; return `计薪期 ${dateLabel(start)} 起，最迟至 ${dateLabel(addDays(addMonths(start,11),-1))}`; })()}</small></div>
+        <label><span>超期持续用工截止日</span><div className="rule-date-value">{setup.cutoffDate || "未填写"}</div><small>系统以统计截止日期作为持续用工截止日</small></label>
+        <div className="rule-result"><span>规则测算结果</span><strong>¥ {money(totals.double)}</strong><small>{(() => { const end = atMidnight(effectiveDoubleRule.contractEnd); const until = atMidnight(effectiveDoubleRule.continuedUntil); if (!end || !until) return "请先填写合同期满日和统计截止日期"; const start = addDays(end,1); if (!effectiveDoubleRule.enabled) return `持续用工尚未满 1 个月，满月判定日为 ${dateLabel(addDays(addMonths(start,1),-1))}`; return `已从 ${dateLabel(start)} 起计入，最迟至 ${dateLabel(addDays(addMonths(start,11),-1))}`; })()}</small></div>
       </div>
-      <p className="rule-note"><b>计算口径：</b>持续用工达到 1 个月后，追溯至合同期满次日计算额外一倍工资；不足整月按该月工作日比例折算，累计最多 11 个月。工资基数取明细中的“合同月薪”，所属期间取“工资所属月”。不同地区裁审口径可能存在差异。</p>
+      <p className="rule-note"><b>自动规则：</b>统计截止日显示劳动关系在合同期满后仍持续存在，且从期满次日起达到 1 个月时，系统自动开启双倍工资，并追溯至期满次日计算额外一倍；不足整月按该月工作日比例折算，累计最多 11 个月。工资基数取明细中的“合同月薪”。</p>
     </section>
 
     <section className="sheet">
