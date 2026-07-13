@@ -314,7 +314,7 @@ export default function Home() {
         <div className="basic-fields">
           <label><span>入职日期</span><input type="date" value={setup.employmentDate} onChange={e=>setSetup(s=>({...s,employmentDate:e.target.value,contractStart:s.contractStart||e.target.value}))}/></label>
           <label><span>统计截止日期</span><input type="date" value={setup.cutoffDate} onChange={e=>setSetup(s=>({...s,cutoffDate:e.target.value}))}/><small>默认今天，也可改为离职或测算日期</small></label>
-          <label className="salary-field"><span>合同月薪</span><div className="money-input salary-input"><i>¥</i><input type="number" min="0" value={setup.contractPay||""} placeholder="例如 20,000" onChange={e=>setSetup(s=>({...s,contractPay:Number(e.target.value)}))}/><span className="salary-unit">元/月</span></div><small>劳动合同约定的税前月工资</small></label>
+          <label className="salary-field"><span>合同月薪</span><div className="money-input salary-input"><input type="number" min="0" value={setup.contractPay||""} placeholder="例如 20,000" onChange={e=>setSetup(s=>({...s,contractPay:Number(e.target.value)}))}/><span className="salary-unit">元/月</span></div><small>劳动合同约定的税前月工资</small></label>
         </div>
         {setup.employmentDate&&setup.cutoffDate&&setup.employmentDate>setup.cutoffDate&&<p className="inline-error" role="alert">统计截止日期不能早于入职日期。</p>}
         <div className="guided-actions"><span></span><button className="next" disabled={!basicReady} onClick={()=>setFlowStep("scenario")}>下一步：选择事项 →</button></div>
