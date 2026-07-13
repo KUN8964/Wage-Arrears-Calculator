@@ -34,7 +34,8 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /统计截止日期/);
   assert.match(page, /开始欠薪月份/);
   assert.match(page, /首个欠薪月实际发了多少/);
-  assert.match(page, /劳动合同开始日/);
+  assert.doesNotMatch(page, /劳动合同开始日/);
+  assert.match(page, /合同上写的最后一天/);
   assert.match(page, /automaticDoubleRuleFor/);
   assert.match(page, /已自动启用/);
   assert.doesNotMatch(page, /<span>每月应发工资<\/span>/);

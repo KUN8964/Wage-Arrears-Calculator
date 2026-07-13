@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：缴费金额与法规比例提示增强已发布。
-- 当前交付目标：把公司实际缴纳金额设为主输入，并提供准确的比例法规提示。
+- 当前阶段：合同问题简化验证中。
+- 当前交付目标：移除不参与计算的合同开始日，只保留易懂的合同期满日问题。
 
 ## Stage Checklist
 
@@ -21,6 +21,7 @@
 | 8 | 回归验证、提交与部署 | Completed |
 | 9 | 实缴金额主输入与法规比例提示 | Completed |
 | 10 | 增强版本提交与部署 | Completed |
+| 11 | 移除合同开始日并简化双倍工资问题 | In progress |
 
 ## MVP Scope After Confirmation
 
@@ -33,5 +34,5 @@
 
 ## Locked Contract Summary
 
-- 16 项 LOCKED 合同已记录在 `findings.md`；其中 6 项来自用户持续确认。
+- 17 项 LOCKED 合同已记录在 `findings.md`；其中 7 项来自用户持续确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。

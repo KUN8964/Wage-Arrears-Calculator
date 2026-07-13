@@ -30,3 +30,10 @@ test("asks for actual company contributions and explains statutory rate ranges",
   assert.match(page, /单位缴存比例法定范围 5%–12%/);
   assert.match(page, /修改测算基数/);
 });
+
+test("does not ask users for a contract start date that the calculation does not use", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(page, /劳动合同开始日/);
+  assert.match(page, /合同上写的最后一天/);
+  assert.match(page, /双倍工资只需要合同期满日/);
+});
