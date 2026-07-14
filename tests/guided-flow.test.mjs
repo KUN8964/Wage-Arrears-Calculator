@@ -22,6 +22,35 @@ test("keeps unselected claims out of generated rows", async () => {
   assert.match(page, /精算明细仅用于复核/);
 });
 
+test("adds reimbursement as an optional claim with an explicit total policy", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /type Claim = "wage" \| "social" \| "fund" \| "doublePay" \| "reimbursement"/);
+  assert.match(page, /报销费用未支付/);
+  assert.match(page, /尚未支付的报销金额/);
+  assert.match(page, /reimbursementAmount/);
+  assert.match(page, /reimbursementIncluded/);
+  assert.match(page, /计入本次合计/);
+  assert.match(page, /仅在报告中记录/);
+  assert.match(page, /reimbursementEnabled&&setup\.reimbursementIncluded/);
+  assert.match(page, /version:7/);
+});
+
+test("provides a self-contained A4 report that exports through system print", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /导出报告/);
+  assert.match(page, /window\.print\(\)/);
+  assert.match(page, /className="print-report"/);
+  assert.match(page, /SYSTEM GENERATED REPORT \/ 系统生成报告/);
+  assert.match(page, /工资、社保及报销/);
+  assert.match(page, /报告编号/);
+  assert.match(page, /报销口径/);
+  assert.match(css, /@page\{size:A4/);
+  assert.match(css, /@media print/);
+  assert.match(css, /\.app-shell>\*:not\(\.print-report\)/);
+  assert.match(css, /\.report-pattern/);
+});
+
 test("calculates social insurance from the actual declared base and five employer rates", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /公司实际申报缴费基数/);

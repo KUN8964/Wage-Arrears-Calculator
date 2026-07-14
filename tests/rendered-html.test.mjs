@@ -20,6 +20,8 @@ test("server-renders the public calculator", async () => {
   assert.match(html, /工资与社保欠款/);
   assert.match(html, /引导测算/);
   assert.match(html, /先填写三个基础事实/);
+  assert.match(html, /SYSTEM GENERATED REPORT/);
+  assert.match(html, /工资、社保及报销/);
   assert.doesNotMatch(html, /登录账号|注册账号|codex-preview/);
 });
 

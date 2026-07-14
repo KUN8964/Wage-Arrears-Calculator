@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：五险公司费率与实际申报基数自动测算发布中。
-- 当前交付目标：实现与验证已完成，正在同步两个线上页面。
+- 当前阶段：报销欠款与 A4 报告双端发布中。
+- 当前交付目标：完成提交、GitHub Pages 与 Sites 部署，并核验线上版本。
 
 ## Stage Checklist
 
@@ -25,7 +25,10 @@
 | 12 | 合同月薪金额卡视觉改造 | Completed |
 | 13 | 缴费基数回退、实缴比例反推与最低比例兜底 | Completed |
 | 14 | 五险费率拆分、实际申报基数与旧数据迁移 | Completed |
-| 15 | 回归验证、提交与双端部署 | In Progress |
+| 15 | 回归验证、提交与双端部署 | Completed |
+| 16 | 报销事项、计入合计口径与本地数据升级 | Completed |
+| 17 | A4 报告模板、打印导出与可访问性 | Completed |
+| 18 | 回归验证、提交与双端部署 | In Progress |
 
 ## MVP Scope After Confirmation
 
@@ -38,5 +41,5 @@
 
 ## Locked Contract Summary
 
-- 18 项 LOCKED 合同已记录在 `findings.md`；其中 8 项来自用户持续确认。
+- 20 项 LOCKED 合同已记录在 `findings.md`；其中 10 项来自用户持续确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。
