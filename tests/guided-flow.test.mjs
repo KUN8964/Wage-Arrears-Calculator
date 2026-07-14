@@ -57,6 +57,9 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   assert.match(css, /--report-accent:/);
   assert.match(css, /font-variant-numeric:tabular-nums/);
   assert.match(css, /\.report-summary-table[\s\S]*text-align:right/);
+  assert.match(css, /\.report-summary-table\{[^}]*min-width:0/);
+  assert.match(css, /\.report-summary-table th,\.report-summary-table td\{[^}]*position:static[^}]*height:auto[^}]*background:transparent/);
+  assert.match(css, /\.report-summary-table tfoot td\{[^}]*position:static[^}]*background:transparent!important/);
   assert.doesNotMatch(page, /report-pattern|report-barcode|report-code/);
   assert.doesNotMatch(reportCss, /repeating-conic-gradient|repeating-linear-gradient/);
   assert.doesNotMatch(reportCss, /border-(?:top|bottom):1px (?:dotted|dashed)/);
