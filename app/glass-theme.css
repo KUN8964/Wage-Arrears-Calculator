@@ -811,6 +811,25 @@ footer button {
   }
 }
 
+/* Compound amount fields use one focus ring on the outer container. */
+.money-input input,
+.module-fields .money-input input:hover,
+.module-fields .money-input input:focus {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .money-input input:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+.money-input i {
+  flex: 0 0 auto;
+}
+
 /* Keep the custom percentage readable after the four presets. */
 .wage-rate-choices {
   grid-template-columns: repeat(4, minmax(88px, 1fr)) minmax(150px, 1.2fr);

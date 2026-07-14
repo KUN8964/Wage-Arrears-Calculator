@@ -106,3 +106,10 @@ test("applies the scenic glass redesign without weakening form accessibility", a
   assert.match(theme, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(theme, /@media \(max-width: 680px\)/);
 });
+
+test("keeps compound money inputs unobstructed while focused", async () => {
+  const theme = await readFile(new URL("../app/glass-theme.css", import.meta.url), "utf8");
+  assert.match(theme, /\.module-fields \.money-input input:focus[\s\S]*border: 0/);
+  assert.match(theme, /\.app-shell \.money-input input:focus-visible[\s\S]*outline: none/);
+  assert.match(theme, /\.money-input:focus-within[\s\S]*box-shadow:/);
+});
