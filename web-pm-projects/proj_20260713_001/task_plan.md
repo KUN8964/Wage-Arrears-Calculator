@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：报销欠款与 A4 报告双端发布中。
-- 当前交付目标：完成提交、GitHub Pages 与 Sites 部署，并核验线上版本。
+- 当前阶段：报销欠款与 A4 报告已完成双端发布。
+- 当前交付目标：已完成；后续仅按用户反馈迭代报告内容与打印细节。
 
 ## Stage Checklist
 
@@ -28,7 +28,7 @@
 | 15 | 回归验证、提交与双端部署 | Completed |
 | 16 | 报销事项、计入合计口径与本地数据升级 | Completed |
 | 17 | A4 报告模板、打印导出与可访问性 | Completed |
-| 18 | 回归验证、提交与双端部署 | In Progress |
+| 18 | 回归验证、提交与双端部署 | Completed |
 
 ## MVP Scope After Confirmation
 
