@@ -49,6 +49,7 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   assert.match(css, /@page\{size:A4/);
   assert.match(css, /@media print/);
   assert.match(css, /\.app-shell>\*:not\(\.print-report\)/);
+  assert.match(css, /\.report-export\{[^}]*color:#fff!important/);
   assert.match(page, /className="report-masthead"/);
   assert.match(page, /className="report-summary-table"/);
   assert.match(page, /className="report-section-index"/);
