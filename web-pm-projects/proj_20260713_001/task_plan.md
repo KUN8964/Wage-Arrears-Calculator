@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：报销欠款与 A4 报告已完成双端发布。
-- 当前交付目标：已完成；后续仅按用户反馈迭代报告内容与打印细节。
+- 当前阶段：现代咨询/审计式 A4 报告发布中。
+- 当前交付目标：完成克制型报告视觉升级、双端发布与线上核验。
 
 ## Stage Checklist
 
@@ -29,6 +29,7 @@
 | 16 | 报销事项、计入合计口径与本地数据升级 | Completed |
 | 17 | A4 报告模板、打印导出与可访问性 | Completed |
 | 18 | 回归验证、提交与双端部署 | Completed |
+| 19 | 瑞士国际主义报告网格、语义表格与极简视觉升级 | In Progress |
 
 ## MVP Scope After Confirmation
 
@@ -41,5 +42,5 @@
 
 ## Locked Contract Summary
 
-- 20 项 LOCKED 合同已记录在 `findings.md`；其中 10 项来自用户持续确认。
+- 21 项 LOCKED 合同已记录在 `findings.md`；其中 11 项来自用户持续确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。

@@ -457,26 +457,68 @@ export default function Home() {
     </>}
 
     <section className="print-report" aria-label="工资、社保及报销欠款测算报告">
-      <div className="report-sheet">
-        <div className="report-pattern" aria-hidden="true"></div>
-        <p className="report-kicker">SYSTEM GENERATED REPORT / 系统生成报告</p>
-        <h1>工资、社保及报销<br/>欠款测算报告</h1>
-        <div className="report-meta"><div><span>报告编号</span><strong>{reportNumber}</strong></div><div><span>测算月份</span><strong>{reportMonth}</strong></div><div><span>测算期间</span><strong>{rows.length} 个月</strong></div></div>
-        <div className="report-total"><span>当前测算合计</span><strong><i>¥</i>{money(grandTotal)}</strong><small>{reimbursementEnabled?(setup.reimbursementIncluded?"含用户填报的报销金额，凭证真实性需另行核验":`不含仅记录的报销金额 ¥ ${money(Number(setup.reimbursementAmount||0))}`):"未选择报销事项"}</small></div>
-        <div className="report-breakdown">
-          {wageEnabled&&<div><b>工</b><span>欠薪合计</span><i></i><strong>¥ {money(totals.arrears)}</strong></div>}
-          {socialEnabled&&<div><b>社</b><span>社保公司尚欠补缴</span><i></i><strong>¥ {money(totals.social)}</strong></div>}
-          {fundEnabled&&<div><b>积</b><span>公积金公司尚欠补缴</span><i></i><strong>¥ {money(totals.fund)}</strong></div>}
-          {doublePayEnabled&&<div><b>2×</b><span>未续签双倍工资差额</span><i></i><strong>¥ {money(totals.double)}</strong></div>}
-          {reimbursementEnabled&&<div><b>报</b><span>报销欠款{setup.reimbursementIncluded?"":"（仅记录）"}</span><i></i><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong></div>}
-          {wageEnabled&&<div><b>补</b><span>后续补发工资</span><i></i><strong>¥ {money(totals.paid)}</strong></div>}
+      <article className="report-sheet">
+        <header className="report-masthead">
+          <div><strong>薪保计算器</strong><span>WAGE &amp; BENEFITS CALCULATION</span></div>
+          <dl><div><dt>报告编号</dt><dd>{reportNumber}</dd></div><div><dt>报告状态</dt><dd>测算底稿</dd></div></dl>
+        </header>
+
+        <section className="report-title-block">
+          <p className="report-kicker">系统生成报告 · SYSTEM GENERATED REPORT</p>
+          <h1>工资、社会保险与报销<br/>欠款测算报告</h1>
+          <p className="report-deck">基于用户填报的任职、工资、缴费及报销信息，对当前尚欠项目进行结构化汇总。金额以人民币列示。</p>
+        </section>
+
+        <dl className="report-meta">
+          <div><dt>测算月份</dt><dd>{reportMonth}</dd></div>
+          <div><dt>测算期间</dt><dd>{rows.length} 个月</dd></div>
+          <div><dt>入职日期</dt><dd>{setup.employmentDate||"—"}</dd></div>
+          <div><dt>统计截止日期</dt><dd>{setup.cutoffDate||"—"}</dd></div>
+        </dl>
+
+        <section className="report-executive" aria-label="当前测算合计">
+          <div><span>当前测算合计</span><p>{reimbursementEnabled?(setup.reimbursementIncluded?"已包含用户填报的报销金额":`未包含仅作记录的报销金额 ¥ ${money(Number(setup.reimbursementAmount||0))}`):"本次未选择报销事项"}</p></div>
+          <strong><small>¥</small>{money(grandTotal)}</strong>
+        </section>
+
+        <section className="report-section report-composition">
+          <header><span className="report-section-index">01</span><div><h2>欠款构成</h2><p>按本次选择的测算事项汇总</p></div></header>
+          <table className="report-summary-table">
+            <thead><tr><th>项目</th><th>计算口径</th><th>金额（人民币）</th></tr></thead>
+            <tbody>
+              {wageEnabled&&<tr><td>欠薪合计</td><td>{setup.arrearsStartMonth||"—"} 起</td><td>¥ {money(totals.arrears)}</td></tr>}
+              {socialEnabled&&<tr><td>社保公司尚欠补缴</td><td>五险公司承担部分</td><td>¥ {money(totals.social)}</td></tr>}
+              {fundEnabled&&<tr><td>公积金公司尚欠补缴</td><td>单位缴存部分</td><td>¥ {money(totals.fund)}</td></tr>}
+              {doublePayEnabled&&<tr><td>未续签双倍工资差额</td><td>满足条件后最多 11 个月</td><td>¥ {money(totals.double)}</td></tr>}
+              {reimbursementEnabled&&<tr><td>报销欠款</td><td>{setup.reimbursementIncluded?"计入本次合计":"仅作记录，不计入合计"}</td><td>¥ {money(Number(setup.reimbursementAmount||0))}</td></tr>}
+              {wageEnabled&&totals.paid>0&&<tr className="report-supplement-row"><td>后续补发工资</td><td>参考信息，不重复计入</td><td>¥ {money(totals.paid)}</td></tr>}
+            </tbody>
+            <tfoot><tr><th colSpan={2}>当前测算合计</th><td>¥ {money(grandTotal)}</td></tr></tfoot>
+          </table>
+        </section>
+
+        <div className="report-detail-grid">
+          <section className="report-section report-rule">
+            <header><span className="report-section-index">02</span><div><h2>双倍工资测算</h2><p>合同期满后持续用工</p></div></header>
+            <dl className="report-data-list"><div><dt>劳动合同期满日</dt><dd>{setup.contractEnd||"未选择该事项"}</dd></div><div><dt>持续用工截止日</dt><dd>{setup.cutoffDate||"—"}</dd></div><div><dt>测算结果</dt><dd>¥ {money(doublePayEnabled?totals.double:0)}</dd></div></dl>
+            <p className="report-note">{doublePayEnabled?"持续用工满 1 个月后，从合同期满次日起测算额外一倍工资，累计最多 11 个月。":"本次未选择未续签双倍工资事项。"}</p>
+          </section>
+
+          <section className="report-section report-reimbursement">
+            <header><span className="report-section-index">03</span><div><h2>报销信息</h2><p>用户填报，凭证待核验</p></div></header>
+            <dl className="report-data-list"><div><dt>报销金额</dt><dd>¥ {money(reimbursementEnabled?Number(setup.reimbursementAmount||0):0)}</dd></div><div><dt>报销口径</dt><dd>{reimbursementEnabled?(setup.reimbursementIncluded?"计入本次合计":"仅在报告中记录"):"未选择报销事项"}</dd></div><div><dt>事项说明</dt><dd>{reimbursementEnabled?(setup.reimbursementNote||"用户未填写说明"):"—"}</dd></div></dl>
+            <p className="report-note">本报告不核验发票、审批单或支付凭证。</p>
+          </section>
         </div>
-        <section className="report-rule"><h2>未续签双倍工资测算依据</h2><div className="report-rule-grid"><div><span>劳动合同期满日</span><strong>{setup.contractEnd||"未选择该事项"}</strong></div><em>→</em><div><span>超期持续用工截止日</span><strong>{setup.cutoffDate||"—"}</strong></div></div><div className="report-rule-result"><span>规则测算结果</span><strong>¥ {money(doublePayEnabled?totals.double:0)}</strong></div><p>{doublePayEnabled?"合同期满后持续用工达到 1 个月时，从期满次日起测算额外一倍工资，累计最多 11 个月。":"本次未选择未续签双倍工资事项。"}</p></section>
-        <section className="report-reimbursement"><h2>报销信息</h2><div><span>报销金额</span><strong>¥ {money(reimbursementEnabled?Number(setup.reimbursementAmount||0):0)}</strong></div><div><span>报销口径</span><strong>{reimbursementEnabled?(setup.reimbursementIncluded?"计入本次合计":"仅在报告中记录"):"未选择报销事项"}</strong></div><div><span>事项说明</span><strong>{reimbursementEnabled?(setup.reimbursementNote||"用户未填写说明"):"—"}</strong></div><p>报销金额来自用户填报；本报告不核验发票、审批单或支付凭证。</p></section>
-        <div className="report-source"><div><span>数据来源</span><strong>用户填报及本地测算明细</strong></div><div><span>生成方式</span><strong>系统自动测算</strong></div><div><span>报告状态</span><strong>测算底稿</strong></div></div>
-        <div className="report-code"><div className="report-barcode" aria-hidden="true"></div><span>报告编号</span><strong>{reportNumber}</strong></div>
-        <p className="report-disclaimer">本报告仅作为测算底稿，最终金额以证据核验、参保地政策及法定程序认定为准。</p>
-      </div>
+
+        <section className="report-section report-methodology">
+          <header><span className="report-section-index">04</span><div><h2>报告说明</h2><p>数据来源与使用范围</p></div></header>
+          <dl><div><dt>数据来源</dt><dd>用户填报及本地测算明细</dd></div><div><dt>生成方式</dt><dd>系统自动测算</dd></div><div><dt>使用范围</dt><dd>复核、沟通与证据整理参考</dd></div></dl>
+        </section>
+
+        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。最终金额以有效证据、参保地现行政策及法定程序认定为准。</p>
+        <footer className="report-footer"><span>{reportNumber}</span><span>薪保计算器 · 系统生成</span><span>第 1 页</span></footer>
+      </article>
     </section>
 
     <footer><span>薪保计算器</span><p>测算结果仅供核对参考，工资、缴费基数、双倍工资及例外情形请以当地有效规定和经办机构核定为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>

@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 | No. | Project name | Project ID | Last update | Current stage | Progress | Open issues |
 |---|---|---|---|---|---:|---|
-| 1 | 薪保计算器低成本使用改造 | proj_20260713_001 | 2026-07-14 | 报销与 A4 报告已发布 | 100% | 五险默认费率仍需用户按参保地核验；报销凭证需人工核验 |
+| 1 | 薪保计算器低成本使用改造 | proj_20260713_001 | 2026-07-14 | 现代专业报告发布中 | 99% | 五险默认费率仍需用户按参保地核验；报销凭证需人工核验 |
 
 ## 薪保计算器低成本使用改造
 
@@ -14,5 +14,5 @@ Last updated: 2026-07-14
 - Reference project: 当前已上线的薪保计算器。
 - Stack: Next.js 16、React 19、vinext、浏览器 localStorage、Sites 私有部署。
 - Documents: `web-pm-projects/proj_20260713_001/`
-- LOCKED contracts: 20
+- LOCKED contracts: 21
 - PROTECTED decisions: 3

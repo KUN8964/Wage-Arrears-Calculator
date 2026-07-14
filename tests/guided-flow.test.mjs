@@ -35,20 +35,30 @@ test("adds reimbursement as an optional claim with an explicit total policy", as
   assert.match(page, /version:7/);
 });
 
-test("provides a self-contained A4 report that exports through system print", async () => {
+test("provides a restrained Swiss-style A4 report that exports through system print", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const reportCss = css.slice(css.indexOf("/* Printable report */"));
   assert.match(page, /导出报告/);
   assert.match(page, /window\.print\(\)/);
   assert.match(page, /className="print-report"/);
-  assert.match(page, /SYSTEM GENERATED REPORT \/ 系统生成报告/);
+  assert.match(page, /系统生成报告 · SYSTEM GENERATED REPORT/);
   assert.match(page, /工资、社保及报销/);
   assert.match(page, /报告编号/);
   assert.match(page, /报销口径/);
   assert.match(css, /@page\{size:A4/);
   assert.match(css, /@media print/);
   assert.match(css, /\.app-shell>\*:not\(\.print-report\)/);
-  assert.match(css, /\.report-pattern/);
+  assert.match(page, /className="report-masthead"/);
+  assert.match(page, /className="report-summary-table"/);
+  assert.match(page, /className="report-section-index"/);
+  assert.match(page, /第 1 页/);
+  assert.match(css, /--report-accent:/);
+  assert.match(css, /font-variant-numeric:tabular-nums/);
+  assert.match(css, /\.report-summary-table[\s\S]*text-align:right/);
+  assert.doesNotMatch(page, /report-pattern|report-barcode|report-code/);
+  assert.doesNotMatch(reportCss, /repeating-conic-gradient|repeating-linear-gradient/);
+  assert.doesNotMatch(reportCss, /border-(?:top|bottom):1px (?:dotted|dashed)/);
 });
 
 test("calculates social insurance from the actual declared base and five employer rates", async () => {
