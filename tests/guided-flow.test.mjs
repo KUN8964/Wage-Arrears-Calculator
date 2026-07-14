@@ -78,3 +78,12 @@ test("does not display already-paid normal wages in the result summary", async (
   assert.match(page, /后续补发工资/);
   assert.match(page, /totals\.normal/);
 });
+
+test("uses aligned sans-serif numerals for calculation results", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /--number-font:Arial/);
+  assert.match(css, /font-variant-numeric:lining-nums tabular-nums/);
+  assert.match(css, /font-feature-settings:"lnum" 1,"tnum" 1/);
+  assert.match(css, /\.grand-card>strong,\.metrics strong,[^{]*\.result-ready strong,[^{]*\{font-family:var\(--number-font\)/);
+  assert.match(css, /body,button,input,select,table\{font-variant-numeric:lining-nums tabular-nums/);
+});
