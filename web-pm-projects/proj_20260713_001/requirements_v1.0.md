@@ -32,7 +32,7 @@ Before generating code, output:
 - Description: 将专业计算表改造成普通用户能用生活事实完成的引导式计算器，同时保留专业精算能力。
 - Target users: 普通劳动者优先，法律服务和人事核算人员为次级用户。
 - Product perspective: 首次使用成本优先，计算透明度与可复核性不可牺牲。
-- Current status: 用户已确认默认引导模式与缴费比例自动反推规则；实现与验证进行中。
+- Current status: 用户已确认社保改用“实际申报基数 × 五险公司费率合计”的自动测算规则；实现与验证进行中。
 
 ## LOCKED Contracts
 
@@ -51,9 +51,9 @@ Before generating code, output:
 13. 四类事项按用户选择条件展示，未选择事项不渲染问题且不进入合计。
 14. 实缴开始月允许系统推定，但必须显式标识并允许修改。
 15. 本阶段先展示汇总和异常月份，不引入地区政策库；最低比例显示默认来源边界并允许用户按当地规则修改。
-16. 社保、公积金模块优先填写公司实际每月缴纳金额；公积金默认最低单位比例 5%，社保以养老单位部分 16% 作为保守最低基线且明确合计比例需按参保地调高。
+16. 社保模块优先填写公司实际申报缴费基数，并按养老、失业、工伤、生育、医疗五项公司费率合计自动计算实际缴纳金额；公积金继续优先填写公司实际每月缴纳金额。
 17. 双倍工资引导仅询问合同期满日，不询问未参与计算的合同开始日；字段文案使用“合同上写的最后一天”。
-18. 未填写缴费基数时按合同月薪作为缺省测算基数；实缴比例按“公司实际月缴金额 ÷ 测算基数”反推，系统采用反推比例与用户确认的当地最低比例中的较高值；基数和最低比例均可手工修改。
+18. 社保应缴测算基数未填写时按合同月薪；实际缴纳额等于实际申报基数乘以五险公司费率合计，漏缴额等于应缴金额减实际缴纳金额，五项费率与应缴基数均可修改。公积金仍按实缴金额反推比例并与最低比例取高。
 
 ## PROTECTED Product Decisions
 
@@ -118,11 +118,12 @@ Before generating code, output:
 #### 社保模块
 
 - 公司是否实际缴纳过：是或否。
-- 选择“是”后填写公司最近一个月实缴金额和最后实缴月份。
+- 选择“是”后填写公司实际申报缴费基数和最后实缴月份。
 - 实缴开始月默认等于入职月份，并显示“系统推定”。
-- 连续区间内使用最近月金额；用户可通过粘贴记录或异常月编辑覆盖。
-- 未填写缴费基数时按合同月薪推定，折叠入口允许手工修改。
-- 反推实缴比例，并与可修改的当地最低公司比例取高后计算应缴。
+- 连续区间内使用同一实际申报基数；用户可通过异常月编辑覆盖实际缴纳金额。
+- 应缴测算基数未填写时按合同月薪推定，折叠入口允许手工修改。
+- 展示养老、失业、工伤、生育、医疗五项公司费率并自动汇总；五项均可修改。
+- 每月实际缴纳额为实际申报基数乘五险合计费率；应缴额为应缴测算基数乘同一合计费率；尚欠额取两者差额且不小于零。
 
 #### 公积金模块
 
@@ -187,13 +188,15 @@ Before generating code, output:
 
 - `enabled`: boolean
 - `hasActualPayments`: boolean
-- `actualMonthlyAmount`: non-negative number
+- `actualDeclaredBase`: non-negative number；仅社保使用
+- `actualMonthlyAmount`: non-negative number；社保由实际申报基数和费率合计派生，公积金由用户输入
 - `actualStartMonth`: `YYYY-MM`
 - `actualEndMonth`: `YYYY-MM`
 - `calculationBase`: non-negative number；为空时回退到 `contractPay`
-- `minimumCompanyRate`: positive percentage；社保默认 16，公积金默认 5
-- `inferredActualRate`: `actualMonthlyAmount / effectiveCalculationBase * 100`
-- `effectiveCompanyRate`: `max(inferredActualRate, minimumCompanyRate)`
+- `socialEmployerRates`: `{ pension, unemployment, injury, maternity, medical }`；五项非负百分比且可修改
+- `effectiveCompanyRate`: 社保为五项费率之和；公积金为 `max(inferredActualRate, minimumCompanyRate)`
+- `minimumCompanyRate`: positive percentage；仅公积金使用，默认 5
+- `inferredActualRate`: `actualMonthlyAmount / effectiveCalculationBase * 100`；仅公积金使用
 - `monthlyOverrides`: map keyed by `YYYY-MM`
 
 旧字段 `socialPaidStartMonth`、`socialPaidEndMonth`、`fundPaidStartMonth`、`fundPaidEndMonth` 必须迁移到对应 Contribution Setup；旧月度行不得重建或丢失。
@@ -202,6 +205,7 @@ Before generating code, output:
 
 - 保留现有 `xinbao-rows`、`xinbao-double-rule`、`xinbao-meta` 键，或通过一次性迁移写入新版本后继续兼容读取。
 - JSON 导入必须支持当前版本 4。
+- 新版 JSON 为版本 6，必须保存五项社保公司费率和实际申报基数；旧版只有 `socialPaid` 时按五项费率合计反推等值申报基数，迁移前后实际月缴金额不得变化。
 - 新 JSON 版本必须记录界面流程状态、事项选择和推定覆盖。
 - CSV 继续导出完整逐月明细，不因默认折叠而减少列。
 
@@ -221,7 +225,7 @@ Before generating code, output:
 - 三个基础事实字段。
 - 四类事项条件展示。
 - 工资首月比例、合同到期自动规则。
-- 社保、公积金“最近月实缴金额 + 最后实缴月”的连续区间快捷输入。
+- 社保“实际申报基数 + 五险费率 + 最后实缴月”、公积金“最近月实缴金额 + 最后实缴月”的连续区间快捷输入。
 - 推定确认页。
 - 汇总、异常月和折叠台账。
 - 旧数据迁移。
@@ -262,13 +266,13 @@ Before generating code, output:
 3. 实缴开始月等参与计算的推定值均显示“系统推定”及来源，可修改；合同开始日不出现在引导问题中。
 4. 首个欠薪月填 30% 时，该月欠薪为合同月薪的 70%。
 5. 合同到期继续用工未满一个月不计双倍工资，达到一个月后从期满次日起追溯，最多 11 个月。
-6. 社保、公积金实缴金额先抵扣应缴金额，断缴月按 0，汇总显示实缴和尚欠。
+6. 社保实际缴纳额由实际申报基数乘五险合计费率得出并抵扣应缴额；公积金实缴金额直接抵扣；断缴月按 0，汇总显示实缴和尚欠。
 7. 旧案例打开后金额、月份和逐月覆盖不变。
 8. 引导模式和精算模式往返后数据一致。
 9. 手机宽度下每一步无横向滚动；完整台账允许自身横向滚动。
 10. 所有新增行为有失败测试、通过测试和成功构建证据。
-11. 社保、公积金主问题展示“公司实际每月缴纳金额”；公积金可快捷选择 5%、7%、10%、12%，社保不得伪称存在全国统一合计比例区间。
-12. 未填缴费基数时，生成行的基数等于合同月薪；实缴反推比例低于最低比例时采用最低比例，高于最低比例时采用反推比例。
+11. 社保主问题展示“公司实际申报缴费基数”和五项可编辑费率；公积金展示“公司实际每月缴纳金额”并可快捷选择 5%、7%、10%、12%。
+12. 社保应缴基数未填时等于合同月薪；以 20,000 元应缴基数、4,986 元实际申报基数和 28.9% 合计费率为例，应缴 5,780 元、实缴 1,440.954 元、每月少缴 4,339.046 元。
 
 ## Verification Commands
 

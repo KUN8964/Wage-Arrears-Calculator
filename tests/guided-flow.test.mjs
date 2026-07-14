@@ -22,26 +22,40 @@ test("keeps unselected claims out of generated rows", async () => {
   assert.match(page, /精算明细仅用于复核/);
 });
 
-test("asks for actual company contributions and explains statutory rate ranges", async () => {
+test("calculates social insurance from the actual declared base and five employer rates", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /公司实际每月缴纳金额/);
-  assert.match(page, /养老保险单位部分 16%/);
-  assert.match(page, /社保合计比例由参保地确定/);
+  assert.match(page, /公司实际申报缴费基数/);
+  assert.match(page, /养老保险/);
+  assert.match(page, /失业保险/);
+  assert.match(page, /工伤保险/);
+  assert.match(page, /生育保险/);
+  assert.match(page, /医疗保险/);
+  assert.match(page, /socialActualBase/);
+  assert.match(page, /五险公司费率合计/);
   assert.match(page, /单位缴存比例法定范围 5%–12%/);
-  assert.match(page, /修改测算基数/);
+  assert.match(page, /修改应缴测算基数/);
 });
 
-test("infers paid rates from contract salary and applies editable legal floors", async () => {
+test("uses the contract salary as the expected base while keeping fund floors", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /socialBase\|\|setup\.contractPay/);
   assert.match(page, /fundBase\|\|setup\.contractPay/);
-  assert.match(page, /Math\.max\(inferredSocialPaidRate/);
   assert.match(page, /Math\.max\(inferredFundPaidRate/);
-  assert.match(page, /当地最低公司比例（可修改）/);
-  assert.match(page, /实际缴纳金额 ÷ 测算基数/);
-  assert.match(page, /系统采用比例/);
-  assert.match(page, /socialRate: 16/);
+  assert.match(page, /公司实际缴纳 = 实际申报基数 × 五险公司费率合计/);
+  assert.match(page, /应缴金额 = 应缴测算基数 × 五险公司费率合计/);
   assert.match(page, /fundRate: 5/);
+});
+
+test("computes five-insurance actual payment and shortfall from two bases", async () => {
+  const { DEFAULT_SOCIAL_RATES, totalEmployerRate, socialContributionForMonth, declaredBaseFromPaidAmount } = await import("../app/contribution-calculator.mjs");
+  assert.equal(totalEmployerRate(DEFAULT_SOCIAL_RATES), 28.9);
+  assert.deepEqual(socialContributionForMonth({ expectedBase: 20_000, actualBase: 4_986, rates: DEFAULT_SOCIAL_RATES }), {
+    rate: 28.9,
+    expected: 5_780,
+    actual: 1_440.954,
+    gap: 4_339.046,
+  });
+  assert.equal(declaredBaseFromPaidAmount(398.88, DEFAULT_SOCIAL_RATES), 1_380.208);
 });
 
 test("does not ask users for a contract start date that the calculation does not use", async () => {
