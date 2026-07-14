@@ -87,3 +87,18 @@ test("uses aligned sans-serif numerals for calculation results", async () => {
   assert.match(css, /\.grand-card>strong,\.metrics strong,[^{]*\.result-ready strong,[^{]*\{font-family:var\(--number-font\)/);
   assert.match(css, /body,button,input,select,table\{font-variant-numeric:lining-nums tabular-nums/);
 });
+
+test("applies the scenic glass redesign without weakening form accessibility", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/glass-theme.css", import.meta.url), "utf8");
+  assert.match(layout, /import "\.\/glass-theme\.css"/);
+  assert.match(page, /<main className="app-shell">/);
+  assert.match(page, /className="skip-link"/);
+  assert.match(page, /id="calculator"/);
+  assert.match(theme, /backdrop-filter: blur\(/);
+  assert.match(theme, /min-height: 44px/);
+  assert.match(theme, /:focus-visible/);
+  assert.match(theme, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(theme, /@media \(max-width: 680px\)/);
+});
