@@ -67,9 +67,13 @@ test("aligns contract salary with date inputs without a currency icon", async ()
 test("places the custom arrears rate after 100 percent at matching height", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/glass-theme.css", import.meta.url), "utf8");
   assert.match(page, /\[0,30,50,100\]\.map[\s\S]*custom-rate-input/);
   assert.match(css, /\.wage-rate-choices\{grid-template-columns:repeat\(5/);
   assert.match(css, /\.wage-rate-choices \.custom-rate-input\{height:31px/);
+  assert.match(theme, /\.wage-rate-choices \{[\s\S]*grid-template-columns: repeat\(4, minmax\(88px, 1fr\)\) minmax\(150px, 1\.2fr\)/);
+  assert.match(theme, /\.wage-rate-choices \.custom-rate-input \{[\s\S]*grid-template-columns: 42px minmax\(0, 1fr\)/);
+  assert.match(theme, /\.custom-rate-input input::?-webkit-inner-spin-button/);
 });
 
 test("does not display already-paid normal wages in the result summary", async () => {
