@@ -129,7 +129,7 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   assert.match(page, /className="report-masthead"/);
   assert.match(page, /className="report-summary-table"/);
   assert.match(page, /className="report-section-index"/);
-  assert.match(page, /第 1 页/);
+  assert.match(page, /报告末页/);
   assert.match(css, /--report-accent:/);
   assert.match(css, /font-variant-numeric:tabular-nums/);
   assert.match(css, /\.report-summary-table[\s\S]*text-align:right/);
@@ -139,6 +139,25 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   assert.doesNotMatch(page, /report-pattern|report-barcode|report-code/);
   assert.doesNotMatch(reportCss, /repeating-conic-gradient|repeating-linear-gradient/);
   assert.doesNotMatch(reportCss, /border-(?:top|bottom):1px (?:dotted|dashed)/);
+});
+
+test("adds a nationwide rights-enforcement route matrix to the end of the report", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /维权路径建议/);
+  assert.match(page, /劳动保障监察投诉/);
+  assert.match(page, /劳动人事争议仲裁/);
+  assert.match(page, /申请支付令/);
+  assert.match(page, /社保与公积金专项处理/);
+  assert.match(page, /委托律师或申请法律援助/);
+  assert.match(page, /住房公积金管理中心/);
+  assert.match(page, /不改变本报告任何测算金额/);
+  assert.match(page, /一般仲裁时效为 1 年/);
+  assert.match(page, /连续或继续状态自行为终了之日起计算/);
+  assert.match(page, /主要全国性依据/);
+  assert.match(css, /\.report-rights-plan/);
+  assert.match(css, /\.report-route-table\{[^}]*table-layout:fixed/);
+  assert.match(css, /\.report-rights-plan\{break-before:page/);
 });
 
 test("calculates social insurance from the actual declared base and five employer rates", async () => {

@@ -645,8 +645,32 @@ export default function Home() {
           <dl><div><dt>数据来源</dt><dd>用户填报及本地测算明细</dd></div><div><dt>生成方式</dt><dd>系统自动测算</dd></div><div><dt>使用范围</dt><dd>复核、沟通与证据整理参考</dd></div></dl>
         </section>
 
+        <section className="report-section report-rights-plan">
+          <header><span className="report-section-index">{workInjuryEnabled?"06":"05"}</span><div><h2>维权路径建议</h2><p>全国通用程序框架，具体受理窗口以所在地公开办事指南为准</p></div></header>
+          <div className="report-route-intro">
+            <span>本报告当前涉及</span>
+            <strong>{claimOptions.filter(item=>selectedClaims.includes(item.key)).map(item=>item.title).join("、")||"尚未选择测算事项"}</strong>
+            <p>以下内容不改变本报告任何测算金额。先固定原始证据，再根据争议类型选择行政投诉、劳动仲裁、支付令或专业法律服务；同一事项已经进入仲裁或诉讼后，行政机关可能告知按相应争议程序办理。</p>
+          </div>
+          <table className="report-route-table">
+            <thead><tr><th>路径</th><th>适合处理</th><th>行动与程序边界</th></tr></thead>
+            <tbody>
+              <tr><td><b>劳动保障监察投诉</b><small>行政投诉 / 受理立案</small></td><td>单位明确、违法事实较清楚的欠薪、工时等事项</td><td>向有管辖权的人社行政部门或劳动保障监察机构提交投诉。各地机构名称不同，常被称为“劳动监察大队”。原则上关注违法行为发生之日起 2 年；连续或继续状态自行为终了之日起计算。解除性质、赔偿资格等争议可能转劳动争议程序。</td></tr>
+              <tr><td><b>劳动人事争议仲裁</b><small>争议金额与责任认定</small></td><td>欠薪、双倍工资、年假或加班工资、经济补偿及其他劳动争议</td><td>向有管辖权的劳动人事争议仲裁委员会提出明确请求，并提交事实与证据。一般仲裁时效为 1 年；劳动关系存续期间的欠薪争议不受该 1 年限制，但劳动关系终止后应在 1 年内提出。</td></tr>
+              <tr><td><b>申请支付令</b><small>基层人民法院督促程序</small></td><td>已经到期、金额明确、债权债务关系清楚且能够送达单位的劳动报酬</td><td>可依法向有管辖权的基层人民法院申请。单位提出成立的书面异议后，支付令失效；属于劳动争议的，通常仍应先行仲裁。支付令不是替代争议审理的通用捷径。</td></tr>
+              <tr><td><b>社保与公积金专项处理</b><small>行政核查 / 责令补缴</small></td><td>未参保、少缴社会保险费，或未缴、少缴住房公积金</td><td>社保事项向当地社保费征收机构及人社、医保、税务部门按公开职责分工反映；公积金事项向住房公积金管理中心申请核查和责令补缴。各地征收与受理分工不同，不宜仅依赖劳动仲裁解决。</td></tr>
+              <tr><td><b>委托律师或申请法律援助</b><small>专业代理 / 公共法律服务</small></td><td>解除性质争议、金额较大、证据由单位控制、多主体或复杂工伤案件</td><td>仲裁并不强制委托律师。需要代理时，应明确委托阶段、权限和收费；符合条件的，可向当地法律援助机构申请，资格审查、证明材料和服务范围以当地实施规则为准。</td></tr>
+            </tbody>
+          </table>
+          <div className="report-action-order">
+            <span>建议顺序</span>
+            <ol><li><b>固定证据</b> 保存劳动合同、工资流水与工资条、考勤、社保和公积金记录、解除通知及沟通原件；工伤事项另保存病历、诊断、事故和交通责任材料。</li><li><b>列明请求</b> 按项目写清期间、计算式、金额和证据来源；书面催告并保留送达记录，可用于证明曾主张权利。</li><li><b>选择程序</b> 明确行政违法可先投诉；金额或责任存在争议通常走仲裁；债务清楚可评估支付令；复杂案件尽早咨询律师或法律援助机构。</li></ol>
+          </div>
+          <p className="report-route-basis">主要全国性依据：《劳动保障监察条例》《劳动争议调解仲裁法》《劳动合同法》《民事诉讼法》《社会保险法》《住房公积金管理条例》《法律援助法》。本节为程序导航，不替代受理机关的管辖判断或个案法律意见。</p>
+        </section>
+
         <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见、工伤认定或缴费核定结论。离职原因、解除程序、经济补偿资格、工伤认定、年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
-        <footer className="report-footer"><span>{reportNumber}</span><span>薪资计算器 · 系统生成</span><span>第 1 页</span></footer>
+        <footer className="report-footer"><span>{reportNumber}</span><span>薪资计算器 · 系统生成</span><span>报告末页</span></footer>
       </article>
     </section>
 
