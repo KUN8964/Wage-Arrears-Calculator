@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：年假折现、加班工资与调休折现扩展开发中。
-- 当前交付目标：将三项权益接入引导输入、总计、本地备份和 A4 报告，并完成双端部署。
+- 当前阶段：年假折现、加班工资与调休折现已发布。
+- 当前交付目标：已完成；后续根据真实案件证据与当地裁审口径继续校准提示文案。
 
 ## Stage Checklist
 
@@ -31,9 +31,9 @@
 | 18 | 回归验证、提交与双端部署 | Completed |
 | 19 | 瑞士国际主义报告网格、语义表格与极简视觉升级 | Completed |
 | 20 | 年假、加班与调休法律口径和数据契约 | Completed |
-| 21 | 纯函数测试与引导式输入实现 | In Progress |
-| 22 | 总计、报告、备份迁移与回归验证 | Pending |
-| 23 | GitHub Pages 与 Sites 双端部署 | Pending |
+| 21 | 纯函数测试与引导式输入实现 | Completed |
+| 22 | 总计、报告、备份迁移与回归验证 | Completed |
+| 23 | GitHub Pages 与 Sites 双端部署 | Completed |
 
 ## MVP Scope After Confirmation
 
