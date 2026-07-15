@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：产品名称统一与年假折算公式说明开发中。
-- 当前交付目标：所有对外名称统一为“薪资计算器”，年假摘要可直接核对 5 天等折算结果的来源。
+- 当前阶段：产品名称统一与年假折算公式说明已完成并发布。
+- 当前交付目标：所有对外名称已统一为“薪资计算器”，年假摘要可直接核对 5 天等折算结果的来源。
 
 ## Stage Checklist
 
@@ -36,8 +36,8 @@
 | 23 | GitHub Pages 与 Sites 双端部署 | Completed |
 | 24 | 三项权益卡片关闭交互与草稿保留测试 | Completed |
 | 25 | 回归验证与双端发布 | Completed |
-| 26 | 产品名称统一与年假折算说明测试 | In Progress |
-| 27 | 回归验证与双端发布 | Pending |
+| 26 | 产品名称统一与年假折算说明测试 | Completed |
+| 27 | 回归验证与双端发布 | Completed |
 
 ## MVP Scope After Confirmation
 

@@ -32,7 +32,7 @@ Before generating code, output:
 - Description: 将专业计算表改造成普通用户能用生活事实完成的引导式计算器，同时保留专业精算能力。
 - Target users: 普通劳动者优先，法律服务和人事核算人员为次级用户。
 - Product perspective: 首次使用成本优先，计算透明度与可复核性不可牺牲。
-- Current status: 用户已确认社保改用“实际申报基数 × 五险公司费率合计”的自动测算规则；实现与验证进行中。
+- Current status: 产品名称已统一为“薪资计算器”，年假折算过程已可见，完整功能已发布。
 
 ## LOCKED Contracts
 
