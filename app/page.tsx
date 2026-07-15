@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionForMonth, totalEmployerRate } from "./contribution-calculator.mjs";
 import { annualLeaveCompensation, compTimeCompensation, currentYearEmploymentDays, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
 import { terminationCompensation } from "./termination-calculator.mjs";
+import { WORK_INJURY_KINDS, workInjuryScreening } from "./work-injury-screening.mjs";
 
 type Row = {
   id: number;
@@ -28,7 +29,7 @@ type Row = {
 
 type DoublePayRule = { enabled: boolean; contractEnd: string; continuedUntil: string };
 const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedUntil: "" };
-type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime" | "termination";
+type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime" | "termination" | "workInjury";
 type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
 type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
 type QuickSetup = {
@@ -42,6 +43,7 @@ type QuickSetup = {
   overtimeWageBase: number; weekdayOvertimeHours: number; restDayOvertimeHours: number; holidayOvertimeHours: number;
   compTimeWageBase: number; outstandingCompTimeDays: number; restDayClaimsDistinct: boolean;
   terminationType: "forced" | "layoff"; terminationAveragePay: number; terminationAdditionalMonths: number; terminationExtraPayBase: number; terminationLocalAveragePay: number;
+  workInjuryKind: keyof typeof WORK_INJURY_KINDS; workInjuryDate: string; workInjuryCommuteResponsibility: "nonPrimary" | "primary" | "pending"; workInjuryEmployerApplied: "yes" | "no" | "unknown";
 };
 type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
 const defaultSetup: QuickSetup = {
@@ -56,6 +58,7 @@ const defaultSetup: QuickSetup = {
   overtimeWageBase: 0, weekdayOvertimeHours: 0, restDayOvertimeHours: 0, holidayOvertimeHours: 0,
   compTimeWageBase: 0, outstandingCompTimeDays: 0, restDayClaimsDistinct: false,
   terminationType:"forced", terminationAveragePay:0, terminationAdditionalMonths:1, terminationExtraPayBase:0, terminationLocalAveragePay:0,
+  workInjuryKind:"unclear", workInjuryDate:"", workInjuryCommuteResponsibility:"pending", workInjuryEmployerApplied:"unknown",
 };
 const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] = [
   {key:"wage",title:"工资少发或未发",copy:"从欠薪开始月自动计算",mark:"欠"},
@@ -67,6 +70,7 @@ const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] 
   {key:"overtime",title:"加班工资未支付",copy:"工作日、休息日和法定节假日分开算",mark:"加"},
   {key:"compTime",title:"调休尚未兑现",copy:"只计算休息日加班尚未补休",mark:"休"},
   {key:"termination",title:"离职经济补偿",copy:"被迫离职 N / 公司解除 N+X",mark:"N"},
+  {key:"workInjury",title:"工作中或通勤途中受伤",copy:"资格与申报期限初筛，不计入合计",mark:"伤"},
 ];
 
 const exampleRows: Row[] = [
@@ -222,7 +226,7 @@ export default function Home() {
     } catch { /* use defaults */ }
   }, []);
 
-  const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime"), terminationEnabled=selectedClaims.includes("termination");
+  const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime"), terminationEnabled=selectedClaims.includes("termination"), workInjuryEnabled=selectedClaims.includes("workInjury");
   const inferredEmploymentMonth=setup.employmentDate.slice(0,7);
   const effectiveSocialStart=setup.socialPaidStartMonth || inferredEmploymentMonth;
   const effectiveFundStart=setup.fundPaidStartMonth || inferredEmploymentMonth;
@@ -273,6 +277,8 @@ export default function Home() {
   const effectiveTerminationExtraPayBase=Number(setup.terminationExtraPayBase||effectiveTerminationAveragePay||0);
   const terminationBreakdown=terminationCompensation({employmentDate:setup.employmentDate,terminationDate:setup.cutoffDate,averageMonthlyPay:effectiveTerminationAveragePay,localAverageMonthlyPay:setup.terminationLocalAveragePay,extraMonths:setup.terminationType==="layoff"?setup.terminationAdditionalMonths:0,extraMonthlyPay:effectiveTerminationExtraPayBase});
   const terminationTotal=terminationEnabled?terminationBreakdown.total:0;
+  const workInjuryResult=workInjuryScreening({kind:setup.workInjuryKind,commuteResponsibility:setup.workInjuryCommuteResponsibility,incidentDate:setup.workInjuryDate});
+  const workInjuryFilingNote=setup.workInjuryEmployerApplied==="yes"?"单位已申请：请保存受理决定、申报材料和后续认定文书。":setup.workInjuryEmployerApplied==="no"?"单位未申请：不要只等待单位处理，注意个人通常为事故后 1 年内的申请期限。":"申报情况不清楚：建议尽快向单位或当地人社部门核实是否已经受理。";
   const grandTotal=(wageEnabled?totals.arrears:0)+(socialEnabled?totals.social:0)+(fundEnabled?totals.fund:0)+(doublePayEnabled?totals.double:0)+reimbursementTotal+annualLeaveTotal+overtimeTotal+compTimeTotal+terminationTotal;
   const needsRestDayDistinctConfirmation=overtimeEnabled&&compTimeEnabled&&Number(setup.restDayOvertimeHours)>0&&Number(setup.outstandingCompTimeDays)>0;
   const visible = rows.filter(r => (filter === "全部" || r.status === filter) && `${r.payDate}${r.note}`.includes(query));
@@ -371,7 +377,7 @@ export default function Home() {
     </header>
 
     <section className="hero">
-      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并导出测算报告。</p></div>
+      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并可补充工伤情况初筛、导出测算报告。</p></div>
       <div className="grand-card">{flowStep === "results" ? <><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></> : <><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></>}</div>
     </section>
 
@@ -453,6 +459,19 @@ export default function Home() {
             <details className="advanced-base termination-cap"><summary>高工资封顶设置（可选）</summary><label className="inferred"><span>当地上年度职工月平均工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationLocalAveragePay||""} placeholder="不填写则暂不自动封顶" onChange={e=>setSetup(s=>({...s,terminationLocalAveragePay:Number(e.target.value)}))}/></div><small>填写后，N 部分自动按当地月平均工资 3 倍封顶，计算年限最高 12 年；X 部分不受该封顶影响</small></label></details>
             {setup.terminationType==="forced"?<p className="termination-legal"><b>被迫离职适用边界：</b>仅在劳动者依据《劳动合同法》第 38 条依法解除，并符合第 46 条经济补偿情形时按 N 主张；需保留书面通知和单位违法事实证据。</p>:<p className="termination-legal"><b>不要把所有裁员都理解成 N+1：</b>经济性裁员通常为 N，并不当然增加 1 个月；法定“+1”主要对应第 40 条未提前 30 日书面通知时的代通知金，其他 X 应以协议或实际依据为准。</p>}
           </article>}
+          {workInjuryEnabled&&<article className="question-module work-injury-module">
+            <header><b>伤</b><div><strong>工伤情况初筛</strong><small>只核对典型情形和申报期限，不计算待遇金额，也不进入欠款合计</small></div><button className="question-close" type="button" aria-label="关闭工伤情况初筛" onClick={()=>closeClaim("workInjury")}>关闭此项</button></header>
+            <fieldset className="injury-kind"><legend>哪一种情况最接近？</legend>{(Object.entries(WORK_INJURY_KINDS) as [QuickSetup["workInjuryKind"],string][]).map(([key,label])=><button type="button" key={key} className={setup.workInjuryKind===key?"active":""} aria-pressed={setup.workInjuryKind===key} onClick={()=>setSetup(s=>({...s,workInjuryKind:key}))}><span>{label}</span><i>{setup.workInjuryKind===key?"已选择":"选择"}</i></button>)}</fieldset>
+            <div className="module-fields injury-fields">
+              <label><span>事故发生或职业病确诊日期（可选）</span><input type="date" value={setup.workInjuryDate} onChange={e=>setSetup(s=>({...s,workInjuryDate:e.target.value}))}/><small>填写后自动提示单位和个人通常的申报期限</small></label>
+              {setup.workInjuryKind==="commute"&&<fieldset className="injury-responsibility"><legend>交通事故责任结论</legend><div>{([['nonPrimary','无责、次责或同责'],['primary','主责或全责'],['pending','尚未认定或不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.workInjuryCommuteResponsibility===key?"active":""} aria-pressed={setup.workInjuryCommuteResponsibility===key} onClick={()=>setSetup(s=>({...s,workInjuryCommuteResponsibility:key}))}>{label}</button>)}</div><small>还需同时满足合理上下班时间和路线等条件</small></fieldset>}
+              <fieldset className="injury-responsibility"><legend>单位是否已经申请工伤认定？</legend><div>{([['yes','已经申请'],['no','没有申请'],['unknown','不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.workInjuryEmployerApplied===key?"active":""} aria-pressed={setup.workInjuryEmployerApplied===key} onClick={()=>setSetup(s=>({...s,workInjuryEmployerApplied:key}))}>{label}</button>)}</div></fieldset>
+              <div className={`injury-screening ${workInjuryResult.level}`} aria-live="polite"><span>系统初筛</span><strong>{workInjuryResult.title}</strong><p>{workInjuryResult.explanation}<br/>{workInjuryFilingNote}</p></div>
+              <div className="injury-deadlines"><div><span>单位通常申请期限</span><strong>{workInjuryResult.employerDeadline||"事故后 30 日内"}</strong><small>特殊情况可依法申请延长</small></div><div><span>单位未申请时，个人通常期限</span><strong>{workInjuryResult.workerDeadline||"事故后 1 年内"}</strong><small>职工、近亲属或工会可直接申请</small></div></div>
+              <p className="rights-evidence"><b>先保留这些材料：</b>工伤认定申请表、劳动关系证明、医疗诊断或职业病诊断材料；另保存事故现场照片、报警或责任认定、考勤排班、工作指令、同事证言及与单位沟通记录。是否构成工伤最终由社会保险行政部门依法认定。</p>
+              <p className="injury-legal-note">依据《工伤保险条例》第 14、15、17、18 条进行典型情形初筛。醉酒或吸毒、自残或自杀、故意犯罪等法定排除情形，以及伤残等级和各项待遇金额，本工具暂不自动判断。</p>
+            </div>
+          </article>}
           {socialEnabled&&<article className="question-module">
             <header><b>社</b><div><strong>社保公司部分</strong><small>填写公司实际申报基数，系统按五险费率自动算出实缴和漏缴</small></div></header>
             <div className="has-paid"><span>公司实际缴纳过社保吗？</span><button className={!setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:false,socialPaid:0,socialActualBase:0,socialPaidEndMonth:""}))}>没有</button><button className={setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:true}))}>缴纳过</button></div>
@@ -490,7 +509,7 @@ export default function Home() {
       </div>}
 
       {flowStep==="review"&&<div className="guided-step review-step">
-        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>未选择的事项不会进入合计</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%；`:""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{terminationEnabled?`离职补偿按 ${setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}，N=${percent(terminationBreakdown.appliedN)}；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
+        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>金额类事项进入合计；工伤模块仅作资格和期限初筛</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%；`:""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{terminationEnabled?`离职补偿按 ${setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}，N=${percent(terminationBreakdown.appliedN)}；`:""}{workInjuryEnabled?`工伤初筛：${workInjuryResult.title}（不计入合计）；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
         {(socialEnabled||fundEnabled)&&<div className="policy-warning"><b>缺省测算口径</b><span>{socialEnabled?"社保应缴基数未修改时按合同月薪，实际缴纳金额由公司申报基数乘以五险公司费率合计得出；五险费率可逐项修改。":""}{socialEnabled&&fundEnabled?" ":""}{fundEnabled?"公积金仍采用实缴金额反推比例与当地最低比例取高。":""}实际基数与比例以参保地现行规定和经办机构核定为准。</span></div>}
         <label className="review-name"><span>测算名称（可选）</span><input value={caseName} onChange={e=>setCaseName(e.target.value)} /></label>
         <div className="guided-actions"><button className="back" onClick={()=>setFlowStep("questions")}>← 返回修改</button><button className="next generate-result" onClick={generateRows}>确认并生成结果 →</button></div>
@@ -510,6 +529,7 @@ export default function Home() {
       {overtimeEnabled&&<article><span className="metric-icon overtime">加</span><div><small>加班工资</small><strong>¥ {money(overtimeTotal)}</strong><p>工作日 ¥ {money(overtimeBreakdown.weekday)} · 休息日 ¥ {money(overtimeBreakdown.restDay)}<br/>法定节假日 ¥ {money(overtimeBreakdown.holiday)}</p></div></article>}
       {compTimeEnabled&&<article><span className="metric-icon comptime">休</span><div><small>休息日加班未补休</small><strong>¥ {money(compTimeTotal)}</strong><p>{percent(setup.outstandingCompTimeDays)} 天 · 按日工资 200% 测算</p></div></article>}
       {terminationEnabled&&<article><span className="metric-icon termination">N</span><div><small>离职经济补偿</small><strong>¥ {money(terminationTotal)}</strong><p>{setup.terminationType==="forced"?"被迫离职 N":`裁员/公司解除 N+${terminationBreakdown.extraMonths}`} · N={percent(terminationBreakdown.appliedN)}<br/>N 部分 ¥ {money(terminationBreakdown.economic)}{terminationBreakdown.extra>0&&` · X 部分 ¥ ${money(terminationBreakdown.extra)}`}</p></div></article>}
+      {workInjuryEnabled&&<article className={`injury-result-card ${workInjuryResult.level}`}><span className="metric-icon injury">伤</span><div><small>工伤情况初筛 · 不计入合计</small><strong>{workInjuryResult.title}</strong><p>{workInjuryResult.kindLabel}<br/>{workInjuryResult.workerDeadline?`个人通常最迟申请日 ${workInjuryResult.workerDeadline}`:"填写事故日期可显示申报期限"}</p></div></article>}
       {wageEnabled&&<article className="settled"><span className="metric-icon paid">✓</span><div><small>后续补发工资</small><strong>¥ {money(totals.paid)}</strong></div></article>}
     </section>
 
@@ -564,7 +584,7 @@ export default function Home() {
         <section className="report-title-block">
           <p className="report-kicker">系统生成报告 · SYSTEM GENERATED REPORT</p>
           <h1>工资、社会保险与劳动权益<br/>欠款测算报告</h1>
-          <p className="report-deck">基于用户填报的任职、工资、缴费、休假、加班、离职补偿及报销信息，对当前尚欠项目进行结构化汇总。金额以人民币列示。</p>
+          <p className="report-deck">基于用户填报的任职、工资、缴费、休假、加班、离职补偿、工伤情况及报销信息，对当前尚欠项目和辅助初筛信息进行结构化汇总。金额以人民币列示。</p>
         </section>
 
         <dl className="report-meta">
@@ -592,6 +612,7 @@ export default function Home() {
               {overtimeEnabled&&<tr><td>加班工资</td><td>工作日 150% / 休息日 200% / 法定节假日 300%</td><td>¥ {money(overtimeTotal)}</td></tr>}
               {compTimeEnabled&&<tr><td>休息日加班未补休</td><td>{percent(setup.outstandingCompTimeDays)} 天 × 日工资 × 200%</td><td>¥ {money(compTimeTotal)}</td></tr>}
               {terminationEnabled&&<tr><td>离职经济补偿</td><td>{setup.terminationType==="forced"?`N=${percent(terminationBreakdown.appliedN)}`:`N=${percent(terminationBreakdown.appliedN)} + X=${terminationBreakdown.extraMonths}`}</td><td>¥ {money(terminationTotal)}</td></tr>}
+              {workInjuryEnabled&&<tr className="report-supplement-row"><td>工伤情况初筛</td><td>{workInjuryResult.title}</td><td>不计入合计</td></tr>}
               {reimbursementEnabled&&<tr><td>报销欠款</td><td>{setup.reimbursementIncluded?"计入本次合计":"仅作记录，不计入合计"}</td><td>¥ {money(Number(setup.reimbursementAmount||0))}</td></tr>}
               {wageEnabled&&totals.paid>0&&<tr className="report-supplement-row"><td>后续补发工资</td><td>参考信息，不重复计入</td><td>¥ {money(totals.paid)}</td></tr>}
             </tbody>
@@ -613,16 +634,22 @@ export default function Home() {
           </section>
         </div>
 
+        {workInjuryEnabled&&<section className="report-section report-work-injury">
+          <header><span className="report-section-index">04</span><div><h2>工伤情况初筛</h2><p>典型情形与申报期限提示，不构成工伤认定</p></div></header>
+          <dl className="report-data-list report-injury-list"><div><dt>用户选择情形</dt><dd>{workInjuryResult.kindLabel}</dd></div><div><dt>初筛结果</dt><dd>{workInjuryResult.title}</dd></div><div><dt>单位通常申请期限</dt><dd>{workInjuryResult.employerDeadline||"事故后 30 日内"}</dd></div><div><dt>个人通常申请期限</dt><dd>{workInjuryResult.workerDeadline||"事故后 1 年内"}</dd></div><div><dt>单位申报情况</dt><dd>{setup.workInjuryEmployerApplied==="yes"?"已申请":setup.workInjuryEmployerApplied==="no"?"未申请":"不清楚"}</dd></div></dl>
+          <p className="report-note">{workInjuryResult.explanation} {workInjuryFilingNote} 依据《工伤保险条例》第 14、15、17、18 条进行初筛；最终以社会保险行政部门的工伤认定决定、劳动能力鉴定和有效证据为准。</p>
+        </section>}
+
         <section className="report-section report-methodology">
-          <header><span className="report-section-index">04</span><div><h2>报告说明</h2><p>数据来源与使用范围</p></div></header>
+          <header><span className="report-section-index">{workInjuryEnabled?"05":"04"}</span><div><h2>报告说明</h2><p>数据来源与使用范围</p></div></header>
           <dl><div><dt>数据来源</dt><dd>用户填报及本地测算明细</dd></div><div><dt>生成方式</dt><dd>系统自动测算</dd></div><div><dt>使用范围</dt><dd>复核、沟通与证据整理参考</dd></div></dl>
         </section>
 
-        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。离职原因、解除程序、经济补偿资格、年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
+        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见、工伤认定或缴费核定结论。离职原因、解除程序、经济补偿资格、工伤认定、年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
         <footer className="report-footer"><span>{reportNumber}</span><span>薪资计算器 · 系统生成</span><span>第 1 页</span></footer>
       </article>
     </section>
 
-    <footer><span>薪资计算器</span><p>测算结果仅供核对参考，工资、缴费、年假、加班、调休及例外情形请以有效证据和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
+    <footer><span>薪资计算器</span><p>测算与初筛结果仅供核对参考，工资、缴费、工伤、年假、加班、调休及例外情形请以有效证据、法定认定程序和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
   </main>;
 }

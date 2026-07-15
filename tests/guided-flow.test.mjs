@@ -95,6 +95,22 @@ test("adds mutually exclusive N and N plus X termination compensation", async ()
   assert.match(page, /version:9/);
 });
 
+test("adds a closable work injury screening without adding an estimated award to the total", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /\| "workInjury"/);
+  assert.match(page, /工伤情况初筛/);
+  assert.match(page, /资格与申报期限初筛，不计入合计/);
+  assert.match(page, /aria-label="关闭工伤情况初筛"/);
+  assert.match(page, /workInjuryScreening/);
+  assert.match(page, /事故后 30 日内/);
+  assert.match(page, /事故后 1 年内/);
+  assert.match(page, /工伤认定申请表、劳动关系证明、医疗诊断或职业病诊断材料/);
+  assert.doesNotMatch(page, /grandTotal=.*workInjury/);
+  assert.match(css, /\.injury-screening/);
+  assert.match(css, /\.injury-kind>button:focus-visible/);
+});
+
 test("provides a restrained Swiss-style A4 report that exports through system print", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
