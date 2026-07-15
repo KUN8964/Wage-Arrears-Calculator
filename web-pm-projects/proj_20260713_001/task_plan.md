@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：现代咨询/审计式 A4 报告已发布。
-- 当前交付目标：已完成；后续仅根据真实打印样张调整内容密度。
+- 当前阶段：年假折现、加班工资与调休折现扩展开发中。
+- 当前交付目标：将三项权益接入引导输入、总计、本地备份和 A4 报告，并完成双端部署。
 
 ## Stage Checklist
 
@@ -30,6 +30,10 @@
 | 17 | A4 报告模板、打印导出与可访问性 | Completed |
 | 18 | 回归验证、提交与双端部署 | Completed |
 | 19 | 瑞士国际主义报告网格、语义表格与极简视觉升级 | Completed |
+| 20 | 年假、加班与调休法律口径和数据契约 | Completed |
+| 21 | 纯函数测试与引导式输入实现 | In Progress |
+| 22 | 总计、报告、备份迁移与回归验证 | Pending |
+| 23 | GitHub Pages 与 Sites 双端部署 | Pending |
 
 ## MVP Scope After Confirmation
 
@@ -42,5 +46,5 @@
 
 ## Locked Contract Summary
 
-- 21 项 LOCKED 合同已记录在 `findings.md`；其中 11 项来自用户持续确认。
+- 24 项 LOCKED 合同已记录在 `findings.md`；其中新增 3 项由用户本轮明确确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。

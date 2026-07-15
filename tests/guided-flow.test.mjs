@@ -32,7 +32,23 @@ test("adds reimbursement as an optional claim with an explicit total policy", as
   assert.match(page, /计入本次合计/);
   assert.match(page, /仅在报告中记录/);
   assert.match(page, /reimbursementEnabled&&setup\.reimbursementIncluded/);
-  assert.match(page, /version:7/);
+  assert.match(page, /version:8/);
+});
+
+test("adds annual leave, overtime and uncompensated rest-day leave to the guided total and report", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /annualLeave/);
+  assert.match(page, /overtime/);
+  assert.match(page, /compTime/);
+  assert.match(page, /未休年假折现/);
+  assert.match(page, /工作日延时加班/);
+  assert.match(page, /休息日加班尚未补休/);
+  assert.match(page, /书面主动放弃/);
+  assert.match(page, /不得与“休息日加班工资”重复填写/);
+  assert.match(page, /annualLeaveTotal/);
+  assert.match(page, /overtimeTotal/);
+  assert.match(page, /compTimeTotal/);
+  assert.match(page, /version:8/);
 });
 
 test("provides a restrained Swiss-style A4 report that exports through system print", async () => {
@@ -43,7 +59,7 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   assert.match(page, /window\.print\(\)/);
   assert.match(page, /className="print-report"/);
   assert.match(page, /系统生成报告 · SYSTEM GENERATED REPORT/);
-  assert.match(page, /工资、社保及报销/);
+  assert.match(page, /工资、社保及劳动权益/);
   assert.match(page, /报告编号/);
   assert.match(page, /报销口径/);
   assert.match(css, /@page\{size:A4/);

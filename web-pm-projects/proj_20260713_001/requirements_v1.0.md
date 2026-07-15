@@ -38,7 +38,7 @@ Before generating code, output:
 
 1. 无需注册登录，打开即可计算。
 2. 案例数据默认只存当前浏览器，不上传业务数据。
-3. 合计包含欠薪、未续签双倍工资、社保公司尚欠、公积金公司尚欠，以及选择“计入合计”的报销欠款；“仅记录”的报销金额不进入总计。
+3. 合计包含欠薪、未续签双倍工资、社保公司尚欠、公积金公司尚欠、未休年假额外补偿、加班工资、休息日加班未补休折现，以及选择“计入合计”的报销欠款；“仅记录”的报销金额不进入总计。
 4. 社保、公积金公司实缴金额和实缴月份必须计入，尚欠额按月抵扣后计算。
 5. 合同期满继续用工满一个月自动启用额外一倍工资，期满次日起算，最多 11 个月。
 6. 保留逐月修正、保存、JSON 备份恢复和 CSV 导出，并提供可打印或另存为 PDF 的 A4 测算报告。
@@ -48,7 +48,7 @@ Before generating code, output:
 10. 完成声明必须有测试与构建证据。
 11. 默认入口采用引导模式，完整逐月台账折叠为精算明细。
 12. 初始必填仅为入职日期、统计截止日期和合同月薪；截止日期默认当天。
-13. 五类事项按用户选择条件展示，未选择事项不渲染问题且不进入合计。
+13. 八类事项按用户选择条件展示，未选择事项不渲染问题且不进入合计。
 14. 实缴开始月允许系统推定，但必须显式标识并允许修改。
 15. 本阶段先展示汇总和异常月份，不引入地区政策库；最低比例显示默认来源边界并允许用户按当地规则修改。
 16. 社保模块优先填写公司实际申报缴费基数，并按养老、失业、工伤、生育、医疗五项公司费率合计自动计算实际缴纳金额；公积金继续优先填写公司实际每月缴纳金额。
@@ -57,6 +57,9 @@ Before generating code, output:
 19. 报销模块只要求报销金额、可选说明和“计入合计 / 仅记录”选择；不强制上传凭证，“仅记录”状态必须在结果和报告中明确显示。
 20. 报告采用本地 A4 打印版，包含报告编号、测算月份、合计与分项、报销口径、双倍工资依据、数据来源和免责声明；点击导出后调用系统打印，可另存为 PDF，不上传数据。
 21. 报告视觉必须专业、克制并适合打印归档：使用无衬线现代中文字体、模块化网格、统一留白、轻量表格和数字右对齐；仅允许黑白深灰与一种低饱和品牌色，不使用花纹、插画、水印、渐变、装饰性线条、无意义图形或虚拟机器码。
+22. 未休年假折现按累计工龄确定全年法定天数；离职或统计当年按已过日历天数折算并扣除已休天数，不足 1 天舍去。日工资按离职前 12 个月剔除加班工资后的平均月工资除以 21.75；正常工资已支付时仅计额外 200%，职工书面主动放弃时不计补偿。
+23. 加班工资分工作日延时、休息日未补休、法定休假日三类，分别按小时工资的 150%、200%、300% 测算；小时工资按月工资基数除以 21.75 再除以 8。
+24. 调休折现仅指休息日加班后尚未安排补休的工资报酬，按日工资的 200% 测算；同一休息日加班不得同时填入“休息日加班工资”和“调休未兑现”。
 
 ## PROTECTED Product Decisions
 
@@ -94,13 +97,16 @@ Before generating code, output:
 
 ### Step 2 · 选择发生的事项
 
-使用五个多选卡片：
+使用八个多选卡片：
 
 - 工资少发或未发
 - 社保少缴或未缴
 - 公积金少缴或未缴
 - 合同期满后仍继续工作
 - 报销费用未支付
+- 未休年假折现
+- 加班工资未支付
+- 调休尚未兑现
 
 未选择的事项不得显示其输入字段，也不得产生该项欠款。
 
@@ -155,7 +161,7 @@ Before generating code, output:
 
 ### Step 5 · 结果与复核
 
-- 第一层：当前合计欠款和五类金额卡片。
+- 第一层：当前合计欠款和所选事项金额卡片。
 - 第二层：每类的应计月份、实缴月份、实缴总额、差额月份、尚欠金额和计算依据。
 - 第三层：仅展示异常月份，例如欠薪、断缴、少缴、合同超期。
 - 第四层：“查看精算明细”展开完整逐月台账。
@@ -189,12 +195,28 @@ Before generating code, output:
 - `employmentDate`: `YYYY-MM-DD`
 - `cutoffDate`: `YYYY-MM-DD`
 - `contractPay`: non-negative number
-- `selectedClaims`: subset of `wage | social | fund | doublePay | reimbursement`
+- `selectedClaims`: subset of `wage | social | fund | doublePay | reimbursement | annualLeave | overtime | compTime`
 - `reimbursementAmount`: non-negative number
 - `reimbursementNote`: string
 - `reimbursementIncluded`: boolean；默认 true
 - `inferenceOverrides`: map of explicitly overridden inferred fields
 - `flowStep`: `basic | scenario | questions | review | results`
+
+### Leave And Overtime Setup
+
+- `annualLeaveWorkYears`: non-negative number；累计工作年限，不仅限于本单位。
+- `annualLeaveTakenDays`: non-negative number；统计当年已休年假天数。
+- `annualLeavePriorUnusedDays`: non-negative number；另行确认且仍在主张范围内的往年未休天数。
+- `annualLeaveAveragePay`: non-negative number；离职前 12 个月剔除加班工资后的平均月工资，为空时显式回退合同月薪作估算。
+- `annualLeaveWrittenWaiver`: boolean；仅代表职工因本人原因书面提出不休。
+- `overtimeWageBase`: non-negative number；加班工资月基数，为空时显式回退合同月薪。
+- `weekdayOvertimeHours`: non-negative number。
+- `restDayOvertimeHours`: non-negative number；仅填尚未补休的休息日加班。
+- `holidayOvertimeHours`: non-negative number。
+- `compTimeWageBase`: non-negative number；为空时显式回退合同月薪。
+- `outstandingCompTimeDays`: non-negative number；仅填休息日加班形成且尚未补休的天数。
+- `restDayClaimsDistinct`: boolean；同时填写休息日加班时数和未补休天数时，必须确认不是同一批记录。
+- JSON 备份版本升级为 8；旧数据缺少上述字段时按默认值迁移，不改变既有项目金额。
 
 ### Contribution Setup
 
@@ -238,7 +260,7 @@ Before generating code, output:
 
 - 引导模式与精算模式。
 - 三个基础事实字段。
-- 四类事项条件展示。
+- 八类事项条件展示。
 - 工资首月比例、合同到期自动规则。
 - 社保“实际申报基数 + 五险费率 + 最后实缴月”、公积金“最近月实缴金额 + 最后实缴月”的连续区间快捷输入。
 - 推定确认页。

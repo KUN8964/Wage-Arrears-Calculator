@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionForMonth, totalEmployerRate } from "./contribution-calculator.mjs";
+import { annualLeaveCompensation, compTimeCompensation, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
 
 type Row = {
   id: number;
@@ -26,7 +27,7 @@ type Row = {
 
 type DoublePayRule = { enabled: boolean; contractEnd: string; continuedUntil: string };
 const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedUntil: "" };
-type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement";
+type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime";
 type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
 type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
 type QuickSetup = {
@@ -36,6 +37,9 @@ type QuickSetup = {
   socialPensionRate: number; socialUnemploymentRate: number; socialInjuryRate: number; socialMaternityRate: number; socialMedicalRate: number;
   fundHasPaid: boolean; fundPaid: number; fundPaidStartMonth: string; fundPaidEndMonth: string; fundBase: number; fundRate: number;
   reimbursementAmount: number; reimbursementNote: string; reimbursementIncluded: boolean;
+  annualLeaveWorkYears: number; annualLeaveTakenDays: number; annualLeavePriorUnusedDays: number; annualLeaveAveragePay: number; annualLeaveWrittenWaiver: boolean;
+  overtimeWageBase: number; weekdayOvertimeHours: number; restDayOvertimeHours: number; holidayOvertimeHours: number;
+  compTimeWageBase: number; outstandingCompTimeDays: number; restDayClaimsDistinct: boolean;
 };
 type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
 const defaultSetup: QuickSetup = {
@@ -46,6 +50,9 @@ const defaultSetup: QuickSetup = {
   socialInjuryRate: DEFAULT_SOCIAL_RATES.injury, socialMaternityRate: DEFAULT_SOCIAL_RATES.maternity, socialMedicalRate: DEFAULT_SOCIAL_RATES.medical,
   fundHasPaid: false, fundPaid: 0, fundPaidStartMonth: "", fundPaidEndMonth: "", fundBase: 0, fundRate: 5,
   reimbursementAmount: 0, reimbursementNote: "", reimbursementIncluded: true,
+  annualLeaveWorkYears: 1, annualLeaveTakenDays: 0, annualLeavePriorUnusedDays: 0, annualLeaveAveragePay: 0, annualLeaveWrittenWaiver: false,
+  overtimeWageBase: 0, weekdayOvertimeHours: 0, restDayOvertimeHours: 0, holidayOvertimeHours: 0,
+  compTimeWageBase: 0, outstandingCompTimeDays: 0, restDayClaimsDistinct: false,
 };
 const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] = [
   {key:"wage",title:"工资少发或未发",copy:"从欠薪开始月自动计算",mark:"欠"},
@@ -53,6 +60,9 @@ const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] 
   {key:"fund",title:"公积金少缴或未缴",copy:"实缴金额先抵扣应缴",mark:"积"},
   {key:"doublePay",title:"合同到期仍在工作",copy:"满一个月自动双倍计薪",mark:"2×"},
   {key:"reimbursement",title:"报销费用未支付",copy:"可计入合计或仅在报告记录",mark:"报"},
+  {key:"annualLeave",title:"未休年假折现",copy:"按工龄和离职当年天数折算",mark:"年"},
+  {key:"overtime",title:"加班工资未支付",copy:"工作日、休息日和法定节假日分开算",mark:"加"},
+  {key:"compTime",title:"调休尚未兑现",copy:"只计算休息日加班尚未补休",mark:"休"},
 ];
 
 const exampleRows: Row[] = [
@@ -208,7 +218,7 @@ export default function Home() {
     } catch { /* use defaults */ }
   }, []);
 
-  const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement");
+  const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime");
   const inferredEmploymentMonth=setup.employmentDate.slice(0,7);
   const effectiveSocialStart=setup.socialPaidStartMonth || inferredEmploymentMonth;
   const effectiveFundStart=setup.fundPaidStartMonth || inferredEmploymentMonth;
@@ -222,7 +232,6 @@ export default function Home() {
     fundActual:a.fundActual+Number(r.fundPaid||0), fundExpected:a.fundExpected+Number(r.fundBase||0)*Number(r.fundRate||0)/100,
   }), {normal:0,paid:0,arrears:0,social:0,fund:0,double:0,socialActual:0,socialExpected:0,fundActual:0,fundExpected:0}), [rows, doubleById]);
   const reimbursementTotal = reimbursementEnabled&&setup.reimbursementIncluded ? Number(setup.reimbursementAmount||0) : 0;
-  const grandTotal = (wageEnabled ? totals.arrears : 0) + (socialEnabled ? totals.social : 0) + (fundEnabled ? totals.fund : 0) + (doublePayEnabled ? totals.double : 0) + reimbursementTotal;
   const rowClaimTotal = (row: Row) => (wageEnabled ? Number(row.arrears || 0) : 0) + (socialEnabled ? socialDueFor(row) : 0) + (fundEnabled ? fundDueFor(row) : 0) + (doublePayEnabled ? Number(doubleById.get(row.id) || 0) : 0);
   const openRows = rows.filter(r => r.status === "未结清").length;
   const socialMonths = rows.filter(r => socialDueFor(r) > 0).length;
@@ -245,12 +254,27 @@ export default function Home() {
   const setupFundExpectedMonthly = effectiveFundBase*effectiveFundRate/100;
   const setupSocialDue = setupSocialMonthly.gap*setupSocialPaidMonths + setupSocialExpectedMonthly*Math.max(0,setupMonths-setupSocialPaidMonths);
   const setupFundDue = Math.max(0,setupFundExpectedMonthly-Number(setup.fundPaid||0))*setupFundPaidMonths + setupFundExpectedMonthly*Math.max(0,setupMonths-setupFundPaidMonths);
+  const annualLeaveStatutoryDays=statutoryAnnualLeaveDays(setup.annualLeaveWorkYears);
+  const annualLeaveCurrentYearDays=annualLeaveEnabled?proratedAnnualLeaveDays({employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate,cumulativeWorkYears:setup.annualLeaveWorkYears,takenDays:setup.annualLeaveTakenDays}):0;
+  const annualLeaveUnusedDays=annualLeaveCurrentYearDays+Number(setup.annualLeavePriorUnusedDays||0);
+  const effectiveAnnualLeavePay=Number(setup.annualLeaveAveragePay||setup.contractPay||0);
+  const annualLeaveTotal=annualLeaveEnabled?annualLeaveCompensation({averageMonthlyPay:effectiveAnnualLeavePay,unusedDays:annualLeaveUnusedDays,writtenWaiver:setup.annualLeaveWrittenWaiver}):0;
+  const effectiveOvertimeBase=Number(setup.overtimeWageBase||setup.contractPay||0);
+  const overtimeBreakdown=overtimeCompensation({monthlyWageBase:effectiveOvertimeBase,weekdayHours:setup.weekdayOvertimeHours,restDayHours:setup.restDayOvertimeHours,holidayHours:setup.holidayOvertimeHours});
+  const overtimeTotal=overtimeEnabled?overtimeBreakdown.total:0;
+  const effectiveCompTimeBase=Number(setup.compTimeWageBase||setup.contractPay||0);
+  const compTimeTotal=compTimeEnabled?compTimeCompensation({monthlyWageBase:effectiveCompTimeBase,outstandingDays:setup.outstandingCompTimeDays}):0;
+  const grandTotal=(wageEnabled?totals.arrears:0)+(socialEnabled?totals.social:0)+(fundEnabled?totals.fund:0)+(doublePayEnabled?totals.double:0)+reimbursementTotal+annualLeaveTotal+overtimeTotal+compTimeTotal;
+  const needsRestDayDistinctConfirmation=overtimeEnabled&&compTimeEnabled&&Number(setup.restDayOvertimeHours)>0&&Number(setup.outstandingCompTimeDays)>0;
   const visible = rows.filter(r => (filter === "全部" || r.status === filter) && `${r.payDate}${r.note}`.includes(query));
   const basicReady=Boolean(setup.employmentDate&&setup.cutoffDate&&Number(setup.contractPay)>0&&setup.employmentDate<=setup.cutoffDate);
-  const questionsReady=Boolean(selectedClaims.length&&(!wageEnabled||setup.arrearsStartMonth)&&(!doublePayEnabled||setup.contractEnd)&&(!socialEnabled||(effectiveSocialRate>0&&(!setup.socialHasPaid||(effectiveSocialActualBase>0&&setup.socialPaidEndMonth))))&&(!fundEnabled||(Number(setup.fundRate)>0&&(!setup.fundHasPaid||(Number(setup.fundPaid)>0&&setup.fundPaidEndMonth))))&&(!reimbursementEnabled||Number(setup.reimbursementAmount)>0));
+  const questionsReady=Boolean(selectedClaims.length&&(!wageEnabled||setup.arrearsStartMonth)&&(!doublePayEnabled||setup.contractEnd)&&(!socialEnabled||(effectiveSocialRate>0&&(!setup.socialHasPaid||(effectiveSocialActualBase>0&&setup.socialPaidEndMonth))))&&(!fundEnabled||(Number(setup.fundRate)>0&&(!setup.fundHasPaid||(Number(setup.fundPaid)>0&&setup.fundPaidEndMonth))))&&(!reimbursementEnabled||Number(setup.reimbursementAmount)>0)&&(!annualLeaveEnabled||Number(setup.annualLeaveWorkYears)>=1)&&(!overtimeEnabled||(Number(setup.weekdayOvertimeHours)>0||Number(setup.restDayOvertimeHours)>0||Number(setup.holidayOvertimeHours)>0))&&(!compTimeEnabled||Number(setup.outstandingCompTimeDays)>0)&&(!needsRestDayDistinctConfirmation||setup.restDayClaimsDistinct));
   const exceptionRows=rows.filter(r=>rowClaimTotal(r)>0);
   const hasReimbursementException=reimbursementEnabled&&Number(setup.reimbursementAmount)>0;
-  const exceptionCount=exceptionRows.length+(hasReimbursementException?1:0);
+  const hasAnnualLeaveException=annualLeaveEnabled&&annualLeaveTotal>0;
+  const hasOvertimeException=overtimeEnabled&&overtimeTotal>0;
+  const hasCompTimeException=compTimeEnabled&&compTimeTotal>0;
+  const exceptionCount=exceptionRows.length+(hasReimbursementException?1:0)+(hasAnnualLeaveException?1:0)+(hasOvertimeException?1:0)+(hasCompTimeException?1:0);
   const reportMonth=setup.cutoffDate ? setup.cutoffDate.slice(0,7) : "—";
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
   const toggleClaim=(claim:Claim)=>setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
@@ -272,7 +296,7 @@ export default function Home() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪保清算明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:7, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
+    const data = JSON.stringify({ version:8, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
   };
   const importData = (file?: File) => {
@@ -294,6 +318,10 @@ export default function Home() {
     if (wageEnabled && !setup.arrearsStartMonth) return alert("请填写开始欠薪月份。");
     if (wageEnabled && setup.arrearsStartMonth && (setup.arrearsStartMonth < firstMonth || setup.arrearsStartMonth > lastMonth)) return alert("开始欠薪月份需位于入职月份和统计截止月份之间。");
     if (reimbursementEnabled && Number(setup.reimbursementAmount||0)<=0) return alert("请填写尚未支付的报销金额。");
+    if (annualLeaveEnabled && Number(setup.annualLeaveWorkYears||0)<1) return alert("累计工作满 1 年后才享受法定年休假，请核对累计工作年限。");
+    if (overtimeEnabled && Number(setup.weekdayOvertimeHours||0)<=0 && Number(setup.restDayOvertimeHours||0)<=0 && Number(setup.holidayOvertimeHours||0)<=0) return alert("请至少填写一类尚未支付的加班时数。");
+    if (compTimeEnabled && Number(setup.outstandingCompTimeDays||0)<=0) return alert("请填写休息日加班尚未补休的天数。");
+    if (needsRestDayDistinctConfirmation && !setup.restDayClaimsDistinct) return alert("请确认加班工资与调休折现不是同一批休息日加班，避免重复计算。");
     if (socialEnabled && effectiveSocialRate<=0) return alert("请至少填写一项五险公司费率。");
     if (fundEnabled && Number(setup.fundRate||0)<=0) return alert("请填写当地最低公积金单位比例。");
     const paidPeriods = [
@@ -332,7 +360,7 @@ export default function Home() {
     </header>
 
     <section className="hero">
-      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪保计算器</p><h1>工资与社保欠款，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、未续签双倍工资、社保、公积金及报销欠款，并导出测算报告。</p></div>
+      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪保计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、未续签双倍工资及报销欠款，并导出测算报告。</p></div>
       <div className="grand-card">{flowStep === "results" ? <><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></> : <><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></>}</div>
     </section>
 
@@ -363,6 +391,40 @@ export default function Home() {
       {flowStep==="questions"&&<div className="guided-step">
         <div className="question-stack">
           {wageEnabled&&<article className="question-module"><header><b>欠</b><div><strong>工资少发或未发</strong><small>开始欠薪前按足额发放，之后默认未发</small></div></header><div className="module-fields"><label><span>从哪个月开始欠薪？</span><input type="month" value={setup.arrearsStartMonth} onChange={e=>setSetup(s=>({...s,arrearsStartMonth:e.target.value}))}/></label><label><span>首个欠薪月实际发了多少？</span><div className="rate-choices wage-rate-choices">{[0,30,50,100].map(rate=><button key={rate} className={setup.firstArrearsPaidRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,firstArrearsPaidRate:rate}))}>{rate}%</button>)}<div className="money-input custom-rate-input"><i>%</i><input aria-label="首个欠薪月自定义已发比例" type="number" min="0" max="100" value={setup.firstArrearsPaidRate||""} onChange={e=>setSetup(s=>({...s,firstArrearsPaidRate:Number(e.target.value)}))}/></div></div></label></div></article>}
+          {annualLeaveEnabled&&<article className="question-module rights-module">
+            <header><b>年</b><div><strong>未休年假折现</strong><small>离职当年自动折算，正常工资已支付时只计额外 200%</small></div></header>
+            <div className="module-fields rights-fields">
+              <label><span>累计工作年限</span><input type="number" min="0" step="0.1" value={setup.annualLeaveWorkYears||""} onChange={e=>setSetup(s=>({...s,annualLeaveWorkYears:Number(e.target.value)}))}/><small>包含在其他单位的累计工作时间</small></label>
+              <label><span>统计当年已休年假</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.annualLeaveTakenDays||""} onChange={e=>setSetup(s=>({...s,annualLeaveTakenDays:Number(e.target.value)}))}/><span>天</span></div></label>
+              <label><span>前 12 个月平均月工资（不含加班费）</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.annualLeaveAveragePay||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,annualLeaveAveragePay:Number(e.target.value)}))}/></div><small>可含绩效、提成、奖金和岗位补贴；未满 12 个月按实际月份</small></label>
+              <label><span>往年仍主张的未休天数（可选）</span><div className="money-input unit-input"><input type="number" min="0" step="1" value={setup.annualLeavePriorUnusedDays||""} onChange={e=>setSetup(s=>({...s,annualLeavePriorUnusedDays:Number(e.target.value)}))}/><span>天</span></div><small>请自行核对仲裁时效和证据</small></label>
+              <div className="rights-summary"><div><span>全年法定天数</span><strong>{annualLeaveStatutoryDays} 天</strong></div><div><span>当年折算未休</span><strong>{annualLeaveCurrentYearDays} 天</strong></div><div><span>日工资</span><strong>¥ {money(dailyWage(effectiveAnnualLeavePay))}</strong></div><div><span>额外补偿</span><strong>¥ {money(annualLeaveTotal)}</strong></div></div>
+              <label className="check-line"><input type="checkbox" checked={setup.annualLeaveWrittenWaiver} onChange={e=>setSetup(s=>({...s,annualLeaveWrittenWaiver:e.target.checked}))}/><span>我曾因本人原因<strong>书面主动放弃</strong>上述年休假</span></label>
+              {setup.annualLeaveWrittenWaiver&&<p className="legal-warning">已按书面主动放弃例外处理：额外 200% 补偿为 0。仅有口头放弃时不要勾选。</p>}
+              <p className="rights-evidence">建议准备：劳动合同与离职记录、工资流水或工资条、考勤及休假记录、公司未安排休假或欠薪沟通记录。寒暑假、较长病事假等法定例外未自动判定。</p>
+            </div>
+          </article>}
+          {overtimeEnabled&&<article className="question-module rights-module">
+            <header><b>加</b><div><strong>加班工资未支付</strong><small>三类加班分开填写，系统按 150% / 200% / 300% 测算</small></div></header>
+            <div className="module-fields rights-fields">
+              <label><span>加班工资月基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.overtimeWageBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,overtimeWageBase:Number(e.target.value)}))}/></div><small>约定或当地裁审口径不同时可修改</small></label>
+              <label><span>工作日延时加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.weekdayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,weekdayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 150%</small></label>
+              <label><span>休息日加班尚未补休</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.restDayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,restDayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 200%</small></label>
+              <label><span>法定节假日加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.holidayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,holidayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 300%，不能用补休替代</small></label>
+              <div className="rights-summary"><div><span>小时工资</span><strong>¥ {money(overtimeBreakdown.hourly)}</strong></div><div><span>工作日</span><strong>¥ {money(overtimeBreakdown.weekday)}</strong></div><div><span>休息日</span><strong>¥ {money(overtimeBreakdown.restDay)}</strong></div><div><span>法定节假日</span><strong>¥ {money(overtimeBreakdown.holiday)}</strong></div></div>
+              <p className="rights-evidence">建议准备：考勤、排班、审批、工作成果、聊天记录及工资流水。实行综合计算工时或不定时工时的，计算口径可能不同。</p>
+            </div>
+          </article>}
+          {compTimeEnabled&&<article className="question-module rights-module">
+            <header><b>休</b><div><strong>调休尚未兑现</strong><small>仅计算休息日加班后仍未安排补休的部分</small></div></header>
+            <div className="module-fields rights-fields">
+              <label><span>尚未补休的休息日加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.outstandingCompTimeDays||""} onChange={e=>setSetup(s=>({...s,outstandingCompTimeDays:Number(e.target.value)}))}/><span>天</span></div><small>按日工资 × 200% 测算</small></label>
+              <label><span>调休折现月工资基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.compTimeWageBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,compTimeWageBase:Number(e.target.value)}))}/></div></label>
+              <div className="legal-warning strong-warning">不得与“休息日加班工资”重复填写同一批加班；工作日延时和法定节假日加班也不能用调休替代。</div>
+              {needsRestDayDistinctConfirmation&&<label className="check-line"><input type="checkbox" checked={setup.restDayClaimsDistinct} onChange={e=>setSetup(s=>({...s,restDayClaimsDistinct:e.target.checked}))}/><span>我确认两处填写的<strong>不是同一批休息日加班</strong></span></label>}
+              <div className="rights-summary compact-summary"><div><span>日工资</span><strong>¥ {money(dailyWage(effectiveCompTimeBase))}</strong></div><div><span>尚未补休</span><strong>{percent(Number(setup.outstandingCompTimeDays||0))} 天</strong></div><div><span>折现金额</span><strong>¥ {money(compTimeTotal)}</strong></div></div>
+            </div>
+          </article>}
           {doublePayEnabled&&<article className="question-module"><header><b>2×</b><div><strong>合同到期后仍继续工作</strong><small>双倍工资只需要合同期满日，统计截止日已在第一步填写</small></div></header><div className="module-fields"><label><span>合同上写的最后一天</span><input type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/><small>也就是劳动合同期满日；不需要填写合同开始日</small></label></div></article>}
           {socialEnabled&&<article className="question-module">
             <header><b>社</b><div><strong>社保公司部分</strong><small>填写公司实际申报基数，系统按五险费率自动算出实缴和漏缴</small></div></header>
@@ -401,7 +463,7 @@ export default function Home() {
       </div>}
 
       {flowStep==="review"&&<div className="guided-step review-step">
-        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>未选择的事项不会进入合计</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"未选择双倍工资"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%`:""}{socialEnabled&&fundEnabled?"；":""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%`:""}{reimbursementEnabled?`${socialEnabled||fundEnabled?"；":""}报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
+        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>未选择的事项不会进入合计</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%；`:""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
         {(socialEnabled||fundEnabled)&&<div className="policy-warning"><b>缺省测算口径</b><span>{socialEnabled?"社保应缴基数未修改时按合同月薪，实际缴纳金额由公司申报基数乘以五险公司费率合计得出；五险费率可逐项修改。":""}{socialEnabled&&fundEnabled?" ":""}{fundEnabled?"公积金仍采用实缴金额反推比例与当地最低比例取高。":""}实际基数与比例以参保地现行规定和经办机构核定为准。</span></div>}
         <label className="review-name"><span>测算名称（可选）</span><input value={caseName} onChange={e=>setCaseName(e.target.value)} /></label>
         <div className="guided-actions"><button className="back" onClick={()=>setFlowStep("questions")}>← 返回修改</button><button className="next generate-result" onClick={generateRows}>确认并生成结果 →</button></div>
@@ -417,6 +479,9 @@ export default function Home() {
       {fundEnabled&&<article><span className="metric-icon fund">积</span><div><small>公积金公司尚欠补缴</small><strong>¥ {money(totals.fund)}</strong><p>实缴 {fundPaidMonths} 个月 · 尚欠 {fundMonths} 个月<br/>已缴 ¥ {money(totals.fundActual)} · 应缴 ¥ {money(totals.fundExpected)}</p></div></article>}
       {doublePayEnabled&&<article><span className="metric-icon double">2×</span><div><small>未续签双倍工资差额</small><strong>¥ {money(totals.double)}</strong><p>{effectiveDoubleRule.enabled ? "已自动启用 · 最多支持 11 个月" : "尚未满足超期 1 个月"}</p></div></article>}
       {reimbursementEnabled&&<article><span className="metric-icon reimbursement">报</span><div><small>尚未支付的报销</small><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong><p>{setup.reimbursementIncluded?"已计入当前合计":"仅在报告中记录，未计入合计"}{setup.reimbursementNote&&<><br/>{setup.reimbursementNote}</>}</p></div></article>}
+      {annualLeaveEnabled&&<article><span className="metric-icon annual">年</span><div><small>未休年假额外补偿</small><strong>¥ {money(annualLeaveTotal)}</strong><p>{annualLeaveUnusedDays} 天 · 日工资 ¥ {money(dailyWage(effectiveAnnualLeavePay))}<br/>{setup.annualLeaveWrittenWaiver?"已按书面主动放弃处理":"按额外 200% 计入"}</p></div></article>}
+      {overtimeEnabled&&<article><span className="metric-icon overtime">加</span><div><small>加班工资</small><strong>¥ {money(overtimeTotal)}</strong><p>工作日 ¥ {money(overtimeBreakdown.weekday)} · 休息日 ¥ {money(overtimeBreakdown.restDay)}<br/>法定节假日 ¥ {money(overtimeBreakdown.holiday)}</p></div></article>}
+      {compTimeEnabled&&<article><span className="metric-icon comptime">休</span><div><small>休息日加班未补休</small><strong>¥ {money(compTimeTotal)}</strong><p>{percent(setup.outstandingCompTimeDays)} 天 · 按日工资 200% 测算</p></div></article>}
       {wageEnabled&&<article className="settled"><span className="metric-icon paid">✓</span><div><small>后续补发工资</small><strong>¥ {money(totals.paid)}</strong></div></article>}
     </section>
 
@@ -433,7 +498,11 @@ export default function Home() {
 
     <section className="exceptions-card" aria-label="异常月份摘要">
       <div className="exceptions-head"><div><p className="eyebrow">EXCEPTION SUMMARY / 异常项目</p><h2>{exceptionCount} 项需要重点核对</h2></div><strong>¥ {money(grandTotal)}</strong></div>
-      {exceptionCount ? <div className="exception-list">{exceptionRows.slice(0,8).map(row=><div className="exception-row" key={row.id}><b>{row.wageMonth || row.payDate || "未命名月份"}</b><span>{wageEnabled&&Number(row.arrears||0)>0&&<i>欠薪</i>}{socialEnabled&&socialDueFor(row)>0&&<i>社保</i>}{fundEnabled&&fundDueFor(row)>0&&<i>公积金</i>}{doublePayEnabled&&Number(doubleById.get(row.id)||0)>0&&<i>双倍工资</i>}</span><strong>¥ {money(rowClaimTotal(row))}</strong></div>)}{hasReimbursementException&&<div className="exception-row reimbursement-exception"><b>报销费用</b><span><i>报销</i><em>{setup.reimbursementIncluded?"计入合计":"仅记录"}</em></span><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong></div>}</div> : <p className="empty-exceptions">当前条件下没有测算出欠款，请返回检查填写内容。</p>}
+      {exceptionCount ? <div className="exception-list">{exceptionRows.slice(0,8).map(row=><div className="exception-row" key={row.id}><b>{row.wageMonth || row.payDate || "未命名月份"}</b><span>{wageEnabled&&Number(row.arrears||0)>0&&<i>欠薪</i>}{socialEnabled&&socialDueFor(row)>0&&<i>社保</i>}{fundEnabled&&fundDueFor(row)>0&&<i>公积金</i>}{doublePayEnabled&&Number(doubleById.get(row.id)||0)>0&&<i>双倍工资</i>}</span><strong>¥ {money(rowClaimTotal(row))}</strong></div>)}
+        {hasAnnualLeaveException&&<div className="exception-row"><b>未休年假</b><span><i>年假</i></span><strong>¥ {money(annualLeaveTotal)}</strong></div>}
+        {hasOvertimeException&&<div className="exception-row"><b>加班工资</b><span><i>加班</i></span><strong>¥ {money(overtimeTotal)}</strong></div>}
+        {hasCompTimeException&&<div className="exception-row"><b>调休未兑现</b><span><i>未补休</i></span><strong>¥ {money(compTimeTotal)}</strong></div>}
+        {hasReimbursementException&&<div className="exception-row reimbursement-exception"><b>报销费用</b><span><i>报销</i><em>{setup.reimbursementIncluded?"计入合计":"仅记录"}</em></span><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong></div>}</div> : <p className="empty-exceptions">当前条件下没有测算出欠款，请返回检查填写内容。</p>}
       {exceptionRows.length>8&&<p className="more-exceptions">另有 {exceptionRows.length-8} 个月，可在精算明细中查看。</p>}
     </section>
 
@@ -452,11 +521,11 @@ export default function Home() {
         <td className={`double-value ${doublePayEnabled&&(doubleById.get(r.id) || 0) > 0 ? "active" : ""}`}>¥ {money(doublePayEnabled ? doubleById.get(r.id) || 0 : 0)}</td>
         <td className="row-total sticky-right">¥ {money(rowClaimTotal(r))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>)}</tbody>
       <tfoot><tr>{fields.map((f,i) => <td key={`${String(f.key)}-total`}>{i === 0 ? "总计" : f.key === "normalPay" ? `¥ ${money(totals.normal)}` : f.key === "paid" ? `¥ ${money(totals.paid)}` : f.key === "arrears" ? `¥ ${money(totals.arrears)}` : f.key === "socialPaid" ? `¥ ${money(totals.socialActual)}` : f.key === "socialDue" ? `¥ ${money(totals.social)}` : f.key === "fundPaid" ? `¥ ${money(totals.fundActual)}` : f.key === "fundDue" ? `¥ ${money(totals.fund)}` : ""}</td>)}<td>¥ {money(totals.double)}</td><td className="sticky-right">¥ {money(grandTotal)}</td><td className="sticky-right action-col"></td></tr></tfoot></table></div>
-      <div className="sheet-foot"><span>显示 {visible.length} / {rows.length} 条记录 · 修改后请保存</span><span><i></i> 可编辑单元格 <b>合计欠款 = 欠薪 + 双倍工资差额 + 社保应补缴 + 公积金应补缴 + 计入合计的报销</b></span></div>
+      <div className="sheet-foot"><span>显示 {visible.length} / {rows.length} 条记录 · 修改后请保存</span><span><i></i> 可编辑单元格 <b>总计另包含已选的年假、加班、未补休及报销项目</b></span></div>
     </section>}
     </>}
 
-    <section className="print-report" aria-label="工资、社保及报销欠款测算报告">
+    <section className="print-report" aria-label="工资、社保及劳动权益欠款测算报告">
       <article className="report-sheet">
         <header className="report-masthead">
           <div><strong>薪保计算器</strong><span>WAGE &amp; BENEFITS CALCULATION</span></div>
@@ -465,8 +534,8 @@ export default function Home() {
 
         <section className="report-title-block">
           <p className="report-kicker">系统生成报告 · SYSTEM GENERATED REPORT</p>
-          <h1>工资、社会保险与报销<br/>欠款测算报告</h1>
-          <p className="report-deck">基于用户填报的任职、工资、缴费及报销信息，对当前尚欠项目进行结构化汇总。金额以人民币列示。</p>
+          <h1>工资、社会保险与劳动权益<br/>欠款测算报告</h1>
+          <p className="report-deck">基于用户填报的任职、工资、缴费、休假、加班及报销信息，对当前尚欠项目进行结构化汇总。金额以人民币列示。</p>
         </section>
 
         <dl className="report-meta">
@@ -490,6 +559,9 @@ export default function Home() {
               {socialEnabled&&<tr><td>社保公司尚欠补缴</td><td>五险公司承担部分</td><td>¥ {money(totals.social)}</td></tr>}
               {fundEnabled&&<tr><td>公积金公司尚欠补缴</td><td>单位缴存部分</td><td>¥ {money(totals.fund)}</td></tr>}
               {doublePayEnabled&&<tr><td>未续签双倍工资差额</td><td>满足条件后最多 11 个月</td><td>¥ {money(totals.double)}</td></tr>}
+              {annualLeaveEnabled&&<tr><td>未休年假额外补偿</td><td>{annualLeaveUnusedDays} 天 × 日工资 × 200%</td><td>¥ {money(annualLeaveTotal)}</td></tr>}
+              {overtimeEnabled&&<tr><td>加班工资</td><td>工作日 150% / 休息日 200% / 法定节假日 300%</td><td>¥ {money(overtimeTotal)}</td></tr>}
+              {compTimeEnabled&&<tr><td>休息日加班未补休</td><td>{percent(setup.outstandingCompTimeDays)} 天 × 日工资 × 200%</td><td>¥ {money(compTimeTotal)}</td></tr>}
               {reimbursementEnabled&&<tr><td>报销欠款</td><td>{setup.reimbursementIncluded?"计入本次合计":"仅作记录，不计入合计"}</td><td>¥ {money(Number(setup.reimbursementAmount||0))}</td></tr>}
               {wageEnabled&&totals.paid>0&&<tr className="report-supplement-row"><td>后续补发工资</td><td>参考信息，不重复计入</td><td>¥ {money(totals.paid)}</td></tr>}
             </tbody>
@@ -516,11 +588,11 @@ export default function Home() {
           <dl><div><dt>数据来源</dt><dd>用户填报及本地测算明细</dd></div><div><dt>生成方式</dt><dd>系统自动测算</dd></div><div><dt>使用范围</dt><dd>复核、沟通与证据整理参考</dd></div></dl>
         </section>
 
-        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。最终金额以有效证据、参保地现行政策及法定程序认定为准。</p>
+        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
         <footer className="report-footer"><span>{reportNumber}</span><span>薪保计算器 · 系统生成</span><span>第 1 页</span></footer>
       </article>
     </section>
 
-    <footer><span>薪保计算器</span><p>测算结果仅供核对参考，工资、缴费基数、双倍工资及例外情形请以当地有效规定和经办机构核定为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
+    <footer><span>薪保计算器</span><p>测算结果仅供核对参考，工资、缴费、年假、加班、调休及例外情形请以有效证据和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
   </main>;
 }
