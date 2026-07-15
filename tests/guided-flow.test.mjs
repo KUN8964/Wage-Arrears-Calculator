@@ -65,6 +65,20 @@ test("lets users close optional rights modules without clearing their draft valu
   assert.doesNotMatch(page, /closeClaim=.*setSetup/);
 });
 
+test("uses the salary calculator name and explains prorated annual leave days", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(page, /薪资计算器/);
+  assert.match(layout, /薪资计算器｜工资、社保、年假与加班权益测算/);
+  assert.match(readme, /^# 薪资计算器$/m);
+  assert.doesNotMatch(`${page}\n${layout}\n${readme}`, /薪保计算器|薪保清算台/);
+  assert.match(page, /currentYearEmploymentDays/);
+  assert.match(page, /截至统计日折算未休/);
+  assert.match(page, /当年在职 \{annualLeaveElapsedDays\} 天 ÷ 365 × 全年 \{annualLeaveStatutoryDays\} 天/);
+  assert.doesNotMatch(layout, /og\.png/);
+});
+
 test("provides a restrained Swiss-style A4 report that exports through system print", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");

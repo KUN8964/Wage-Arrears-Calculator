@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionForMonth, totalEmployerRate } from "./contribution-calculator.mjs";
-import { annualLeaveCompensation, compTimeCompensation, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
+import { annualLeaveCompensation, compTimeCompensation, currentYearEmploymentDays, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
 
 type Row = {
   id: number;
@@ -255,6 +255,7 @@ export default function Home() {
   const setupSocialDue = setupSocialMonthly.gap*setupSocialPaidMonths + setupSocialExpectedMonthly*Math.max(0,setupMonths-setupSocialPaidMonths);
   const setupFundDue = Math.max(0,setupFundExpectedMonthly-Number(setup.fundPaid||0))*setupFundPaidMonths + setupFundExpectedMonthly*Math.max(0,setupMonths-setupFundPaidMonths);
   const annualLeaveStatutoryDays=statutoryAnnualLeaveDays(setup.annualLeaveWorkYears);
+  const annualLeaveElapsedDays=currentYearEmploymentDays(setup.employmentDate,setup.cutoffDate);
   const annualLeaveCurrentYearDays=annualLeaveEnabled?proratedAnnualLeaveDays({employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate,cumulativeWorkYears:setup.annualLeaveWorkYears,takenDays:setup.annualLeaveTakenDays}):0;
   const annualLeaveUnusedDays=annualLeaveCurrentYearDays+Number(setup.annualLeavePriorUnusedDays||0);
   const effectiveAnnualLeavePay=Number(setup.annualLeaveAveragePay||setup.contractPay||0);
@@ -294,7 +295,7 @@ export default function Home() {
     const header = [...fields.map(f => `${f.group ? f.group + "-" : ""}${f.label}`), "未续签双倍工资差额", "合计欠款"];
     const body = rows.map(r => [...fields.map(f => String(f.key === "socialDue" ? socialDueFor(r) : f.key === "fundDue" ? fundDueFor(r) : r[f.key])), String(doublePayEnabled ? doubleById.get(r.id) || 0 : 0), String(rowClaimTotal(r))]);
     const csv = "\ufeff" + [header, ...body].map(line => line.map(v => `"${v.replaceAll('"','""')}"`).join(",")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪保清算明细.csv"; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪资计算器明细.csv"; a.click();
   };
   const exportData = () => {
     const data = JSON.stringify({ version:8, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
@@ -356,12 +357,12 @@ export default function Home() {
   return <main className="app-shell">
     <a className="skip-link" href="#calculator">跳到测算表单</a>
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">薪</span><div><strong>薪保计算器</strong><small>免登录 · 本地保存 · 开箱即用</small></div></div>
+      <div className="brand"><span className="brand-mark">薪</span><div><strong>薪资计算器</strong><small>免登录 · 本地保存 · 开箱即用</small></div></div>
       <div className="top-actions"><span className="safe">● 数据仅保存在本机</span><button className="ghost" onClick={newCase}>新建</button><button className="ghost" onClick={()=>importInput.current?.click()}>导入</button><button className="ghost" onClick={exportData}>备份</button><button className="ghost" onClick={exportCsv}>CSV</button>{flowStep==="results"&&<button className="ghost report-export" onClick={printReport}>导出报告</button>}<button className="primary" onClick={save}>{saved ? "已保存 ✓" : "保存"}</button><input ref={importInput} className="file-input" type="file" accept="application/json,.json" onChange={e=>{importData(e.target.files?.[0]);e.target.value=""}}/></div>
     </header>
 
     <section className="hero">
-      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪保计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、未续签双倍工资及报销欠款，并导出测算报告。</p></div>
+      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、未续签双倍工资及报销欠款，并导出测算报告。</p></div>
       <div className="grand-card">{flowStep === "results" ? <><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></> : <><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></>}</div>
     </section>
 
@@ -399,7 +400,8 @@ export default function Home() {
               <label><span>统计当年已休年假</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.annualLeaveTakenDays||""} onChange={e=>setSetup(s=>({...s,annualLeaveTakenDays:Number(e.target.value)}))}/><span>天</span></div></label>
               <label><span>前 12 个月平均月工资（不含加班费）</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.annualLeaveAveragePay||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,annualLeaveAveragePay:Number(e.target.value)}))}/></div><small>可含绩效、提成、奖金和岗位补贴；未满 12 个月按实际月份</small></label>
               <label><span>往年仍主张的未休天数（可选）</span><div className="money-input unit-input"><input type="number" min="0" step="1" value={setup.annualLeavePriorUnusedDays||""} onChange={e=>setSetup(s=>({...s,annualLeavePriorUnusedDays:Number(e.target.value)}))}/><span>天</span></div><small>请自行核对仲裁时效和证据</small></label>
-              <div className="rights-summary"><div><span>全年法定天数</span><strong>{annualLeaveStatutoryDays} 天</strong></div><div><span>当年折算未休</span><strong>{annualLeaveCurrentYearDays} 天</strong></div><div><span>日工资</span><strong>¥ {money(dailyWage(effectiveAnnualLeavePay))}</strong></div><div><span>额外补偿</span><strong>¥ {money(annualLeaveTotal)}</strong></div></div>
+              <div className="rights-summary"><div><span>全年法定天数</span><strong>{annualLeaveStatutoryDays} 天</strong></div><div><span>截至统计日折算未休</span><strong>{annualLeaveCurrentYearDays} 天</strong></div><div><span>日工资</span><strong>¥ {money(dailyWage(effectiveAnnualLeavePay))}</strong></div><div><span>额外补偿</span><strong>¥ {money(annualLeaveTotal)}</strong></div></div>
+              <p className="rights-formula-note"><b>为什么是 {annualLeaveCurrentYearDays} 天？</b>当年在职 {annualLeaveElapsedDays} 天 ÷ 365 × 全年 {annualLeaveStatutoryDays} 天 − 已休 {percent(setup.annualLeaveTakenDays)} 天，结果舍去不足 1 天。该折算用于解除或终止劳动合同当年的测算；持续在职到年末时应按实际情况重新计算。</p>
               <label className="check-line"><input type="checkbox" checked={setup.annualLeaveWrittenWaiver} onChange={e=>setSetup(s=>({...s,annualLeaveWrittenWaiver:e.target.checked}))}/><span>我曾因本人原因<strong>书面主动放弃</strong>上述年休假</span></label>
               {setup.annualLeaveWrittenWaiver&&<p className="legal-warning">已按书面主动放弃例外处理：额外 200% 补偿为 0。仅有口头放弃时不要勾选。</p>}
               <p className="rights-evidence">建议准备：劳动合同与离职记录、工资流水或工资条、考勤及休假记录、公司未安排休假或欠薪沟通记录。寒暑假、较长病事假等法定例外未自动判定。</p>
@@ -529,7 +531,7 @@ export default function Home() {
     <section className="print-report" aria-label="工资、社保及劳动权益欠款测算报告">
       <article className="report-sheet">
         <header className="report-masthead">
-          <div><strong>薪保计算器</strong><span>WAGE &amp; BENEFITS CALCULATION</span></div>
+          <div><strong>薪资计算器</strong><span>WAGE &amp; BENEFITS CALCULATION</span></div>
           <dl><div><dt>报告编号</dt><dd>{reportNumber}</dd></div><div><dt>报告状态</dt><dd>测算底稿</dd></div></dl>
         </header>
 
@@ -590,10 +592,10 @@ export default function Home() {
         </section>
 
         <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
-        <footer className="report-footer"><span>{reportNumber}</span><span>薪保计算器 · 系统生成</span><span>第 1 页</span></footer>
+        <footer className="report-footer"><span>{reportNumber}</span><span>薪资计算器 · 系统生成</span><span>第 1 页</span></footer>
       </article>
     </section>
 
-    <footer><span>薪保计算器</span><p>测算结果仅供核对参考，工资、缴费、年假、加班、调休及例外情形请以有效证据和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
+    <footer><span>薪资计算器</span><p>测算结果仅供核对参考，工资、缴费、年假、加班、调休及例外情形请以有效证据和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
   </main>;
 }

@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：年假、加班与调休卡片就地关闭交互已完成并发布。
-- 当前交付目标：用户可在问题步骤纠正误选，已填草稿得到保留，关闭事项不再阻塞下一步。
+- 当前阶段：产品名称统一与年假折算公式说明开发中。
+- 当前交付目标：所有对外名称统一为“薪资计算器”，年假摘要可直接核对 5 天等折算结果的来源。
 
 ## Stage Checklist
 
@@ -36,6 +36,8 @@
 | 23 | GitHub Pages 与 Sites 双端部署 | Completed |
 | 24 | 三项权益卡片关闭交互与草稿保留测试 | Completed |
 | 25 | 回归验证与双端发布 | Completed |
+| 26 | 产品名称统一与年假折算说明测试 | In Progress |
+| 27 | 回归验证与双端发布 | Pending |
 
 ## MVP Scope After Confirmation
 
@@ -48,5 +50,5 @@
 
 ## Locked Contract Summary
 
-- 25 项 LOCKED 合同已记录在 `findings.md`；其中第 25 项由用户本轮明确确认。
+- 26 项 LOCKED 合同已记录在 `findings.md`；其中第 26 项由用户本轮明确确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。

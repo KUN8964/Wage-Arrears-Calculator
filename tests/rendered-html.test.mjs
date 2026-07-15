@@ -16,7 +16,7 @@ test("server-renders the public calculator", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /薪保计算器/);
+  assert.match(html, /薪资计算器/);
   assert.match(html, /工资与劳动权益/);
   assert.match(html, /引导测算/);
   assert.match(html, /先填写三个基础事实/);
