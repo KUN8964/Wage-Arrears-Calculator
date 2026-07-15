@@ -157,7 +157,10 @@ test("adds a nationwide rights-enforcement route matrix to the end of the report
   assert.match(page, /主要全国性依据/);
   assert.match(css, /\.report-rights-plan/);
   assert.match(css, /\.report-route-table\{[^}]*table-layout:fixed/);
-  assert.match(css, /\.report-rights-plan\{break-before:page/);
+  assert.match(css, /\.report-rights-plan\{break-inside:auto/);
+  assert.match(css, /\.report-route-table tr\{break-inside:avoid/);
+  assert.match(css, /\.report-rights-plan>header\{break-after:avoid/);
+  assert.doesNotMatch(css, /\.report-rights-plan\{break-before:page/);
 });
 
 test("calculates social insurance from the actual declared base and five employer rates", async () => {
