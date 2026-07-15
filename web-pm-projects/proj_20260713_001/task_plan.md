@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：年假、加班与调休卡片就地关闭交互开发中。
-- 当前交付目标：允许用户在问题步骤纠正误选，同时保留已填草稿并解除下一步阻塞。
+- 当前阶段：年假、加班与调休卡片就地关闭交互已完成并发布。
+- 当前交付目标：用户可在问题步骤纠正误选，已填草稿得到保留，关闭事项不再阻塞下一步。
 
 ## Stage Checklist
 
@@ -34,8 +34,8 @@
 | 21 | 纯函数测试与引导式输入实现 | Completed |
 | 22 | 总计、报告、备份迁移与回归验证 | Completed |
 | 23 | GitHub Pages 与 Sites 双端部署 | Completed |
-| 24 | 三项权益卡片关闭交互与草稿保留测试 | In Progress |
-| 25 | 回归验证与双端发布 | Pending |
+| 24 | 三项权益卡片关闭交互与草稿保留测试 | Completed |
+| 25 | 回归验证与双端发布 | Completed |
 
 ## MVP Scope After Confirmation
 
