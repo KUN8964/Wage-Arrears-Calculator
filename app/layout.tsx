@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import "./design-tokens.css";
 import "./globals.css";
-import "./glass-theme.css";
+import "./vandslab-theme.css";
+import "./report-theme.css";
 
 export function generateMetadata(): Metadata {
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://xinbao-qingsuantai.kunkun8964.chatgpt.site").replace(/\/$/, "");

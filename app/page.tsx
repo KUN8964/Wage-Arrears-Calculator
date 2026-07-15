@@ -124,8 +124,9 @@ const normalizeRow = (row: Row, index = 0): Row => {
   };
 };
 
-const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const percent = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const csvValue = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : String(value ?? "");
 const atMidnight = (value: string) => value ? new Date(`${value}T00:00:00`) : null;
 const addDays = (date: Date, days: number) => { const next = new Date(date); next.setDate(next.getDate() + days); return next; };
 const addMonths = (date: Date, months: number) => {
@@ -308,7 +309,7 @@ export default function Home() {
   const remove = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
   const exportCsv = () => {
     const header = [...fields.map(f => `${f.group ? f.group + "-" : ""}${f.label}`), "未续签双倍工资差额", "合计欠款"];
-    const body = rows.map(r => [...fields.map(f => String(f.key === "socialDue" ? socialDueFor(r) : f.key === "fundDue" ? fundDueFor(r) : r[f.key])), String(doublePayEnabled ? doubleById.get(r.id) || 0 : 0), String(rowClaimTotal(r))]);
+    const body = rows.map(r => [...fields.map(f => csvValue(f.key === "socialDue" ? socialDueFor(r) : f.key === "fundDue" ? fundDueFor(r) : r[f.key])), csvValue(doublePayEnabled ? doubleById.get(r.id) || 0 : 0), csvValue(rowClaimTotal(r))]);
     const csv = "\ufeff" + [header, ...body].map(line => line.map(v => `"${v.replaceAll('"','""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪资计算器明细.csv"; a.click();
   };
@@ -377,8 +378,9 @@ export default function Home() {
     </header>
 
     <section className="hero">
-      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并可补充工伤情况初筛、导出测算报告。</p></div>
+      <div className="hero-copy"><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1 aria-label="工资、社保与劳动权益一表算清"><span>工资</span><span>社保</span><span className="hero-interrupt" aria-hidden="true"></span><span>权益</span><em>算清</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并可补充工伤情况初筛、导出测算报告。</p></div>
       <div className="grand-card">{flowStep === "results" ? <><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></> : <><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></>}</div>
+      <a className="hero-scroll" href="#calculator" aria-label="向下滚动，开始引导测算"><span>向下开始测算</span><i aria-hidden="true">↓</i></a>
     </section>
 
     <section className="quick-card guided-card" id="calculator">
@@ -520,7 +522,7 @@ export default function Home() {
 
     {flowStep === "results" && <>
     <section className="metrics guided-metrics" aria-label="测算汇总">
-      {wageEnabled&&<article><span className="metric-icon wage">工</span><div><small>欠薪合计</small><strong>¥ {money(totals.arrears)}</strong><p>占总欠款 {grandTotal ? (totals.arrears / grandTotal * 100).toFixed(1) : 0}%</p></div></article>}
+      {wageEnabled&&<article><span className="metric-icon wage">工</span><div><small>欠薪合计</small><strong>¥ {money(totals.arrears)}</strong><p>占总欠款 {percent(grandTotal ? totals.arrears / grandTotal * 100 : 0)}%</p></div></article>}
       {socialEnabled&&<article><span className="metric-icon social">社</span><div><small>社保公司尚欠补缴</small><strong>¥ {money(totals.social)}</strong><p>实缴 {socialPaidMonths} 个月 · 尚欠 {socialMonths} 个月<br/>已缴 ¥ {money(totals.socialActual)} · 应缴 ¥ {money(totals.socialExpected)}</p></div></article>}
       {fundEnabled&&<article><span className="metric-icon fund">积</span><div><small>公积金公司尚欠补缴</small><strong>¥ {money(totals.fund)}</strong><p>实缴 {fundPaidMonths} 个月 · 尚欠 {fundMonths} 个月<br/>已缴 ¥ {money(totals.fundActual)} · 应缴 ¥ {money(totals.fundExpected)}</p></div></article>}
       {doublePayEnabled&&<article><span className="metric-icon double">2×</span><div><small>未续签双倍工资差额</small><strong>¥ {money(totals.double)}</strong><p>{effectiveDoubleRule.enabled ? "已自动启用 · 最多支持 11 个月" : "尚未满足超期 1 个月"}</p></div></article>}
@@ -566,7 +568,7 @@ export default function Home() {
       <tbody>{visible.map(r => <tr key={r.id} className={r.status === "未结清" ? "open" : ""}>{fields.map((f,i) => <td key={`${String(f.key)}-${i}`}>
         {f.key === "status" ? <select aria-label={`${r.payDate}结清状态`} className={r.status === "未结清" ? "status open" : "status"} value={r.status} onChange={e=>update(r.id,f.key,e.target.value)}><option>已结清</option><option>未结清</option></select>
         : f.key === "socialDue" || f.key === "fundDue" ? <div className="calculated-cell"><b>¥ {money(f.key === "socialDue" ? socialDueFor(r) : fundDueFor(r))}</b><small>自动计算</small></div>
-        : <input aria-label={`${r.payDate}${f.label}`} className={f.key === "wageMonth" || f.key === "note" || f.key === "payDate" ? "text" : "number"} type={f.key === "wageMonth" ? "month" : f.key === "note" || f.key === "payDate" ? "text" : "number"} step="0.001" value={r[f.key]} onChange={e=>update(r.id,f.key,e.target.value)}/>}</td>)}
+        : <input aria-label={`${r.payDate}${f.label}`} className={f.key === "wageMonth" || f.key === "note" || f.key === "payDate" ? "text" : "number"} type={f.key === "wageMonth" ? "month" : f.key === "note" || f.key === "payDate" ? "text" : "number"} step="0.01" value={r[f.key]} onChange={e=>update(r.id,f.key,e.target.value)}/>}</td>)}
         <td className={`double-value ${doublePayEnabled&&(doubleById.get(r.id) || 0) > 0 ? "active" : ""}`}>¥ {money(doublePayEnabled ? doubleById.get(r.id) || 0 : 0)}</td>
         <td className="row-total sticky-right">¥ {money(rowClaimTotal(r))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>)}</tbody>
       <tfoot><tr>{fields.map((f,i) => <td key={`${String(f.key)}-total`}>{i === 0 ? "总计" : f.key === "normalPay" ? `¥ ${money(totals.normal)}` : f.key === "paid" ? `¥ ${money(totals.paid)}` : f.key === "arrears" ? `¥ ${money(totals.arrears)}` : f.key === "socialPaid" ? `¥ ${money(totals.socialActual)}` : f.key === "socialDue" ? `¥ ${money(totals.social)}` : f.key === "fundPaid" ? `¥ ${money(totals.fundActual)}` : f.key === "fundDue" ? `¥ ${money(totals.fund)}` : ""}</td>)}<td>¥ {money(totals.double)}</td><td className="sticky-right">¥ {money(grandTotal)}</td><td className="sticky-right action-col"></td></tr></tfoot></table></div>

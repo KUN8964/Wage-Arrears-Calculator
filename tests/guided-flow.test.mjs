@@ -222,7 +222,7 @@ test("aligns contract salary with date inputs without a currency icon", async ()
 test("places the custom arrears rate after 100 percent at matching height", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const theme = await readFile(new URL("../app/glass-theme.css", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
   assert.match(page, /\[0,30,50,100\]\.map[\s\S]*custom-rate-input/);
   assert.match(css, /\.wage-rate-choices\{grid-template-columns:repeat\(5/);
   assert.match(css, /\.wage-rate-choices \.custom-rate-input\{height:31px/);
@@ -238,6 +238,15 @@ test("does not display already-paid normal wages in the result summary", async (
   assert.match(page, /totals\.normal/);
 });
 
+test("limits displayed and exported numeric precision to two decimal places", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /minimumFractionDigits: 2, maximumFractionDigits: 2/);
+  assert.match(page, /const csvValue = .*value\.toFixed\(2\)/);
+  assert.match(page, /step="0\.01"/);
+  assert.doesNotMatch(page, /toFixed\(1\)/);
+  assert.doesNotMatch(page, /step="0\.001"/);
+});
+
 test("uses aligned sans-serif numerals for calculation results", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /--number-font:Arial/);
@@ -247,24 +256,47 @@ test("uses aligned sans-serif numerals for calculation results", async () => {
   assert.match(css, /body,button,input,select,table\{font-variant-numeric:lining-nums tabular-nums/);
 });
 
-test("applies the scenic glass redesign without weakening form accessibility", async () => {
+test("applies the editorial-tech design system without weakening form accessibility", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
-  const theme = await readFile(new URL("../app/glass-theme.css", import.meta.url), "utf8");
-  assert.match(layout, /import "\.\/glass-theme\.css"/);
+  const tokens = await readFile(new URL("../app/design-tokens.css", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
+  const reportTheme = await readFile(new URL("../app/report-theme.css", import.meta.url), "utf8");
+  assert.match(layout, /import "\.\/design-tokens\.css"/);
+  assert.match(layout, /import "\.\/vandslab-theme\.css"/);
+  assert.match(layout, /import "\.\/report-theme\.css"/);
   assert.match(page, /<main className="app-shell">/);
   assert.match(page, /className="skip-link"/);
   assert.match(page, /id="calculator"/);
-  assert.match(theme, /backdrop-filter: blur\(/);
-  assert.match(theme, /min-height: 44px/);
+  assert.match(page, /className="hero-interrupt"/);
+  assert.match(tokens, /--vd-color-acid: #efff84/);
+  assert.match(tokens, /--vd-type-body-on-dark:/);
+  assert.match(tokens, /--vd-type-caption-on-light:/);
+  assert.match(tokens, /--vd-font-size-caption: 0\.75rem/);
+  assert.match(tokens, /--vd-font-size-label: 0\.8125rem/);
+  assert.match(tokens, /--vd-text-caption: var\(--vd-font-size-caption\)/);
+  assert.match(theme, /background: var\(--vd-surface-stage\)/);
+  assert.match(theme, /\.exception-row > b \{ color: var\(--vd-type-body-on-dark\)/);
+  assert.match(theme, /clip-path: polygon\(/);
+  assert.doesNotMatch(theme, /gradient\(/);
+  assert.doesNotMatch(theme, /backdrop-filter/);
+  assert.match(theme, /min-height: var\(--vd-button-height\)/);
+  assert.match(theme, /\.app-shell small,[\s\S]*font-size: var\(--vd-text-caption\)/);
+  assert.match(theme, /\.metric-icon \{[^}]*background: var\(--vd-surface-action\) !important/);
+  assert.match(theme, /\.sheet \.row-total,[\s\S]*\.sheet tfoot td \{ white-space: nowrap/);
   assert.match(theme, /:focus-visible/);
   assert.match(theme, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(theme, /@media \(max-width: 680px\)/);
+  assert.match(theme, /@media screen and \(max-width: 430px\)/);
+  assert.match(reportTheme, /--report-accent: var\(--vd-color-acid\)/);
+  assert.match(reportTheme, /\.report-executive \{[\s\S]*background: var\(--report-ink\)/);
+  assert.match(reportTheme, /\.report-summary-table thead th \{[\s\S]*background: var\(--report-ink\)/);
+  assert.match(reportTheme, /\.report-summary-table tfoot td \{[\s\S]*background: var\(--report-accent\) !important/);
+  assert.doesNotMatch(reportTheme, /gradient\(/);
 });
 
 test("keeps compound money inputs unobstructed while focused", async () => {
-  const theme = await readFile(new URL("../app/glass-theme.css", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
   assert.match(theme, /\.module-fields \.money-input input:focus[\s\S]*border: 0/);
-  assert.match(theme, /\.app-shell \.money-input input:focus-visible[\s\S]*outline: none/);
-  assert.match(theme, /\.money-input:focus-within[\s\S]*box-shadow:/);
+  assert.match(theme, /\.money-input:focus-within[\s\S]*outline: 2px solid var\(--vd-color-ink\)/);
+  assert.match(theme, /\.money-input input,[\s\S]*outline: 0/);
 });
