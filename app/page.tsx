@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionForMonth, totalEmployerRate } from "./contribution-calculator.mjs";
 import { annualLeaveCompensation, compTimeCompensation, currentYearEmploymentDays, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
+import { terminationCompensation } from "./termination-calculator.mjs";
 
 type Row = {
   id: number;
@@ -27,7 +28,7 @@ type Row = {
 
 type DoublePayRule = { enabled: boolean; contractEnd: string; continuedUntil: string };
 const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedUntil: "" };
-type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime";
+type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime" | "termination";
 type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
 type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
 type QuickSetup = {
@@ -40,6 +41,7 @@ type QuickSetup = {
   annualLeaveWorkYears: number; annualLeaveTakenDays: number; annualLeavePriorUnusedDays: number; annualLeaveAveragePay: number; annualLeaveWrittenWaiver: boolean;
   overtimeWageBase: number; weekdayOvertimeHours: number; restDayOvertimeHours: number; holidayOvertimeHours: number;
   compTimeWageBase: number; outstandingCompTimeDays: number; restDayClaimsDistinct: boolean;
+  terminationType: "forced" | "layoff"; terminationAveragePay: number; terminationAdditionalMonths: number; terminationExtraPayBase: number; terminationLocalAveragePay: number;
 };
 type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
 const defaultSetup: QuickSetup = {
@@ -53,6 +55,7 @@ const defaultSetup: QuickSetup = {
   annualLeaveWorkYears: 1, annualLeaveTakenDays: 0, annualLeavePriorUnusedDays: 0, annualLeaveAveragePay: 0, annualLeaveWrittenWaiver: false,
   overtimeWageBase: 0, weekdayOvertimeHours: 0, restDayOvertimeHours: 0, holidayOvertimeHours: 0,
   compTimeWageBase: 0, outstandingCompTimeDays: 0, restDayClaimsDistinct: false,
+  terminationType:"forced", terminationAveragePay:0, terminationAdditionalMonths:1, terminationExtraPayBase:0, terminationLocalAveragePay:0,
 };
 const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] = [
   {key:"wage",title:"工资少发或未发",copy:"从欠薪开始月自动计算",mark:"欠"},
@@ -63,6 +66,7 @@ const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] 
   {key:"annualLeave",title:"未休年假折现",copy:"按工龄和离职当年天数折算",mark:"年"},
   {key:"overtime",title:"加班工资未支付",copy:"工作日、休息日和法定节假日分开算",mark:"加"},
   {key:"compTime",title:"调休尚未兑现",copy:"只计算休息日加班尚未补休",mark:"休"},
+  {key:"termination",title:"离职经济补偿",copy:"被迫离职 N / 公司解除 N+X",mark:"N"},
 ];
 
 const exampleRows: Row[] = [
@@ -218,7 +222,7 @@ export default function Home() {
     } catch { /* use defaults */ }
   }, []);
 
-  const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime");
+  const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime"), terminationEnabled=selectedClaims.includes("termination");
   const inferredEmploymentMonth=setup.employmentDate.slice(0,7);
   const effectiveSocialStart=setup.socialPaidStartMonth || inferredEmploymentMonth;
   const effectiveFundStart=setup.fundPaidStartMonth || inferredEmploymentMonth;
@@ -265,7 +269,11 @@ export default function Home() {
   const overtimeTotal=overtimeEnabled?overtimeBreakdown.total:0;
   const effectiveCompTimeBase=Number(setup.compTimeWageBase||setup.contractPay||0);
   const compTimeTotal=compTimeEnabled?compTimeCompensation({monthlyWageBase:effectiveCompTimeBase,outstandingDays:setup.outstandingCompTimeDays}):0;
-  const grandTotal=(wageEnabled?totals.arrears:0)+(socialEnabled?totals.social:0)+(fundEnabled?totals.fund:0)+(doublePayEnabled?totals.double:0)+reimbursementTotal+annualLeaveTotal+overtimeTotal+compTimeTotal;
+  const effectiveTerminationAveragePay=Number(setup.terminationAveragePay||setup.contractPay||0);
+  const effectiveTerminationExtraPayBase=Number(setup.terminationExtraPayBase||effectiveTerminationAveragePay||0);
+  const terminationBreakdown=terminationCompensation({employmentDate:setup.employmentDate,terminationDate:setup.cutoffDate,averageMonthlyPay:effectiveTerminationAveragePay,localAverageMonthlyPay:setup.terminationLocalAveragePay,extraMonths:setup.terminationType==="layoff"?setup.terminationAdditionalMonths:0,extraMonthlyPay:effectiveTerminationExtraPayBase});
+  const terminationTotal=terminationEnabled?terminationBreakdown.total:0;
+  const grandTotal=(wageEnabled?totals.arrears:0)+(socialEnabled?totals.social:0)+(fundEnabled?totals.fund:0)+(doublePayEnabled?totals.double:0)+reimbursementTotal+annualLeaveTotal+overtimeTotal+compTimeTotal+terminationTotal;
   const needsRestDayDistinctConfirmation=overtimeEnabled&&compTimeEnabled&&Number(setup.restDayOvertimeHours)>0&&Number(setup.outstandingCompTimeDays)>0;
   const visible = rows.filter(r => (filter === "全部" || r.status === filter) && `${r.payDate}${r.note}`.includes(query));
   const basicReady=Boolean(setup.employmentDate&&setup.cutoffDate&&Number(setup.contractPay)>0&&setup.employmentDate<=setup.cutoffDate);
@@ -275,7 +283,8 @@ export default function Home() {
   const hasAnnualLeaveException=annualLeaveEnabled&&annualLeaveTotal>0;
   const hasOvertimeException=overtimeEnabled&&overtimeTotal>0;
   const hasCompTimeException=compTimeEnabled&&compTimeTotal>0;
-  const exceptionCount=exceptionRows.length+(hasReimbursementException?1:0)+(hasAnnualLeaveException?1:0)+(hasOvertimeException?1:0)+(hasCompTimeException?1:0);
+  const hasTerminationException=terminationEnabled&&terminationTotal>0;
+  const exceptionCount=exceptionRows.length+(hasReimbursementException?1:0)+(hasAnnualLeaveException?1:0)+(hasOvertimeException?1:0)+(hasCompTimeException?1:0)+(hasTerminationException?1:0);
   const reportMonth=setup.cutoffDate ? setup.cutoffDate.slice(0,7) : "—";
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
   const toggleClaim=(claim:Claim)=>setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
@@ -298,7 +307,7 @@ export default function Home() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪资计算器明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:8, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
+    const data = JSON.stringify({ version:9, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
   };
   const importData = (file?: File) => {
@@ -362,7 +371,7 @@ export default function Home() {
     </header>
 
     <section className="hero">
-      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、未续签双倍工资及报销欠款，并导出测算报告。</p></div>
+      <div><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1>工资与劳动权益，<br/><em>一表算清。</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并导出测算报告。</p></div>
       <div className="grand-card">{flowStep === "results" ? <><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></> : <><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></>}</div>
     </section>
 
@@ -429,6 +438,21 @@ export default function Home() {
             </div>
           </article>}
           {doublePayEnabled&&<article className="question-module"><header><b>2×</b><div><strong>合同到期后仍继续工作</strong><small>双倍工资只需要合同期满日，统计截止日已在第一步填写</small></div></header><div className="module-fields"><label><span>合同上写的最后一天</span><input type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/><small>也就是劳动合同期满日；不需要填写合同开始日</small></label></div></article>}
+          {terminationEnabled&&<article className="question-module termination-module">
+            <header><b>N</b><div><strong>离职经济补偿</strong><small>系统按本单位工龄自动计算 N，两种情形只会计入其中一种</small></div></header>
+            <div className="termination-kind" role="group" aria-label="离职经济补偿情形">
+              <button type="button" className={setup.terminationType==="forced"?"active":""} aria-pressed={setup.terminationType==="forced"} onClick={()=>setSetup(s=>({...s,terminationType:"forced"}))}>被迫离职（N）</button>
+              <button type="button" className={setup.terminationType==="layoff"?"active":""} aria-pressed={setup.terminationType==="layoff"} onClick={()=>setSetup(s=>({...s,terminationType:"layoff"}))}>裁员/公司解除（N+X）</button>
+            </div>
+            <div className="module-fields termination-fields">
+              <label><span>解除前 12 个月平均应得工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationAveragePay||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,terminationAveragePay:Number(e.target.value)}))}/></div><small>包含奖金、津贴和补贴；未满 12 个月按实际月份平均</small></label>
+              {setup.terminationType==="layoff"&&<><label><span>额外补偿月数 X</span><div className="money-input unit-input"><input aria-label="额外补偿月数X" type="number" min="0" max="9" step="1" value={setup.terminationAdditionalMonths} onChange={e=>setSetup(s=>({...s,terminationAdditionalMonths:Math.min(9,Math.max(0,Math.trunc(Number(e.target.value)||0)))}))}/><span>个月</span></div><small>默认 1，可按通知、协议或实际主张改为 0–9 的整数</small></label><label><span>X 部分每月工资基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationExtraPayBase||""} placeholder={`默认 ${effectiveTerminationAveragePay}`} onChange={e=>setSetup(s=>({...s,terminationExtraPayBase:Number(e.target.value)}))}/></div><small>法定代通知金通常按上一个月工资；协议额外补偿按约定填写</small></label></>}
+              <div className="rights-summary termination-summary"><div><span>系统计算 N</span><strong>{percent(terminationBreakdown.rawN)}</strong></div><div><span>N 部分采用基数</span><strong>¥ {money(terminationBreakdown.nMonthlyBase)}</strong></div><div><span>额外月数 X</span><strong>{terminationBreakdown.extraMonths}</strong></div><div><span>补偿测算合计</span><strong>¥ {money(terminationTotal)}</strong></div></div>
+              <p className="termination-formula">N 部分：{percent(terminationBreakdown.appliedN)} × ¥ {money(terminationBreakdown.nMonthlyBase)} = ¥ {money(terminationBreakdown.economic)}{setup.terminationType==="layoff"&&<>；X 部分：{terminationBreakdown.extraMonths} × ¥ {money(terminationBreakdown.extraMonthlyBase)} = ¥ {money(terminationBreakdown.extra)}</>}</p>
+            </div>
+            <details className="advanced-base termination-cap"><summary>高工资封顶设置（可选）</summary><label className="inferred"><span>当地上年度职工月平均工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationLocalAveragePay||""} placeholder="不填写则暂不自动封顶" onChange={e=>setSetup(s=>({...s,terminationLocalAveragePay:Number(e.target.value)}))}/></div><small>填写后，N 部分自动按当地月平均工资 3 倍封顶，计算年限最高 12 年；X 部分不受该封顶影响</small></label></details>
+            {setup.terminationType==="forced"?<p className="termination-legal"><b>被迫离职适用边界：</b>仅在劳动者依据《劳动合同法》第 38 条依法解除，并符合第 46 条经济补偿情形时按 N 主张；需保留书面通知和单位违法事实证据。</p>:<p className="termination-legal"><b>不要把所有裁员都理解成 N+1：</b>经济性裁员通常为 N，并不当然增加 1 个月；法定“+1”主要对应第 40 条未提前 30 日书面通知时的代通知金，其他 X 应以协议或实际依据为准。</p>}
+          </article>}
           {socialEnabled&&<article className="question-module">
             <header><b>社</b><div><strong>社保公司部分</strong><small>填写公司实际申报基数，系统按五险费率自动算出实缴和漏缴</small></div></header>
             <div className="has-paid"><span>公司实际缴纳过社保吗？</span><button className={!setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:false,socialPaid:0,socialActualBase:0,socialPaidEndMonth:""}))}>没有</button><button className={setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:true}))}>缴纳过</button></div>
@@ -466,7 +490,7 @@ export default function Home() {
       </div>}
 
       {flowStep==="review"&&<div className="guided-step review-step">
-        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>未选择的事项不会进入合计</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%；`:""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
+        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>未选择的事项不会进入合计</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%；`:""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{terminationEnabled?`离职补偿按 ${setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}，N=${percent(terminationBreakdown.appliedN)}；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
         {(socialEnabled||fundEnabled)&&<div className="policy-warning"><b>缺省测算口径</b><span>{socialEnabled?"社保应缴基数未修改时按合同月薪，实际缴纳金额由公司申报基数乘以五险公司费率合计得出；五险费率可逐项修改。":""}{socialEnabled&&fundEnabled?" ":""}{fundEnabled?"公积金仍采用实缴金额反推比例与当地最低比例取高。":""}实际基数与比例以参保地现行规定和经办机构核定为准。</span></div>}
         <label className="review-name"><span>测算名称（可选）</span><input value={caseName} onChange={e=>setCaseName(e.target.value)} /></label>
         <div className="guided-actions"><button className="back" onClick={()=>setFlowStep("questions")}>← 返回修改</button><button className="next generate-result" onClick={generateRows}>确认并生成结果 →</button></div>
@@ -485,6 +509,7 @@ export default function Home() {
       {annualLeaveEnabled&&<article><span className="metric-icon annual">年</span><div><small>未休年假额外补偿</small><strong>¥ {money(annualLeaveTotal)}</strong><p>{annualLeaveUnusedDays} 天 · 日工资 ¥ {money(dailyWage(effectiveAnnualLeavePay))}<br/>{setup.annualLeaveWrittenWaiver?"已按书面主动放弃处理":"按额外 200% 计入"}</p></div></article>}
       {overtimeEnabled&&<article><span className="metric-icon overtime">加</span><div><small>加班工资</small><strong>¥ {money(overtimeTotal)}</strong><p>工作日 ¥ {money(overtimeBreakdown.weekday)} · 休息日 ¥ {money(overtimeBreakdown.restDay)}<br/>法定节假日 ¥ {money(overtimeBreakdown.holiday)}</p></div></article>}
       {compTimeEnabled&&<article><span className="metric-icon comptime">休</span><div><small>休息日加班未补休</small><strong>¥ {money(compTimeTotal)}</strong><p>{percent(setup.outstandingCompTimeDays)} 天 · 按日工资 200% 测算</p></div></article>}
+      {terminationEnabled&&<article><span className="metric-icon termination">N</span><div><small>离职经济补偿</small><strong>¥ {money(terminationTotal)}</strong><p>{setup.terminationType==="forced"?"被迫离职 N":`裁员/公司解除 N+${terminationBreakdown.extraMonths}`} · N={percent(terminationBreakdown.appliedN)}<br/>N 部分 ¥ {money(terminationBreakdown.economic)}{terminationBreakdown.extra>0&&` · X 部分 ¥ ${money(terminationBreakdown.extra)}`}</p></div></article>}
       {wageEnabled&&<article className="settled"><span className="metric-icon paid">✓</span><div><small>后续补发工资</small><strong>¥ {money(totals.paid)}</strong></div></article>}
     </section>
 
@@ -505,6 +530,7 @@ export default function Home() {
         {hasAnnualLeaveException&&<div className="exception-row"><b>未休年假</b><span><i>年假</i></span><strong>¥ {money(annualLeaveTotal)}</strong></div>}
         {hasOvertimeException&&<div className="exception-row"><b>加班工资</b><span><i>加班</i></span><strong>¥ {money(overtimeTotal)}</strong></div>}
         {hasCompTimeException&&<div className="exception-row"><b>调休未兑现</b><span><i>未补休</i></span><strong>¥ {money(compTimeTotal)}</strong></div>}
+        {hasTerminationException&&<div className="exception-row"><b>离职经济补偿</b><span><i>{setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}</i></span><strong>¥ {money(terminationTotal)}</strong></div>}
         {hasReimbursementException&&<div className="exception-row reimbursement-exception"><b>报销费用</b><span><i>报销</i><em>{setup.reimbursementIncluded?"计入合计":"仅记录"}</em></span><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong></div>}</div> : <p className="empty-exceptions">当前条件下没有测算出欠款，请返回检查填写内容。</p>}
       {exceptionRows.length>8&&<p className="more-exceptions">另有 {exceptionRows.length-8} 个月，可在精算明细中查看。</p>}
     </section>
@@ -524,7 +550,7 @@ export default function Home() {
         <td className={`double-value ${doublePayEnabled&&(doubleById.get(r.id) || 0) > 0 ? "active" : ""}`}>¥ {money(doublePayEnabled ? doubleById.get(r.id) || 0 : 0)}</td>
         <td className="row-total sticky-right">¥ {money(rowClaimTotal(r))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>)}</tbody>
       <tfoot><tr>{fields.map((f,i) => <td key={`${String(f.key)}-total`}>{i === 0 ? "总计" : f.key === "normalPay" ? `¥ ${money(totals.normal)}` : f.key === "paid" ? `¥ ${money(totals.paid)}` : f.key === "arrears" ? `¥ ${money(totals.arrears)}` : f.key === "socialPaid" ? `¥ ${money(totals.socialActual)}` : f.key === "socialDue" ? `¥ ${money(totals.social)}` : f.key === "fundPaid" ? `¥ ${money(totals.fundActual)}` : f.key === "fundDue" ? `¥ ${money(totals.fund)}` : ""}</td>)}<td>¥ {money(totals.double)}</td><td className="sticky-right">¥ {money(grandTotal)}</td><td className="sticky-right action-col"></td></tr></tfoot></table></div>
-      <div className="sheet-foot"><span>显示 {visible.length} / {rows.length} 条记录 · 修改后请保存</span><span><i></i> 可编辑单元格 <b>总计另包含已选的年假、加班、未补休及报销项目</b></span></div>
+      <div className="sheet-foot"><span>显示 {visible.length} / {rows.length} 条记录 · 修改后请保存</span><span><i></i> 可编辑单元格 <b>总计另包含已选的年假、加班、未补休、离职补偿及报销项目</b></span></div>
     </section>}
     </>}
 
@@ -538,7 +564,7 @@ export default function Home() {
         <section className="report-title-block">
           <p className="report-kicker">系统生成报告 · SYSTEM GENERATED REPORT</p>
           <h1>工资、社会保险与劳动权益<br/>欠款测算报告</h1>
-          <p className="report-deck">基于用户填报的任职、工资、缴费、休假、加班及报销信息，对当前尚欠项目进行结构化汇总。金额以人民币列示。</p>
+          <p className="report-deck">基于用户填报的任职、工资、缴费、休假、加班、离职补偿及报销信息，对当前尚欠项目进行结构化汇总。金额以人民币列示。</p>
         </section>
 
         <dl className="report-meta">
@@ -565,6 +591,7 @@ export default function Home() {
               {annualLeaveEnabled&&<tr><td>未休年假额外补偿</td><td>{annualLeaveUnusedDays} 天 × 日工资 × 200%</td><td>¥ {money(annualLeaveTotal)}</td></tr>}
               {overtimeEnabled&&<tr><td>加班工资</td><td>工作日 150% / 休息日 200% / 法定节假日 300%</td><td>¥ {money(overtimeTotal)}</td></tr>}
               {compTimeEnabled&&<tr><td>休息日加班未补休</td><td>{percent(setup.outstandingCompTimeDays)} 天 × 日工资 × 200%</td><td>¥ {money(compTimeTotal)}</td></tr>}
+              {terminationEnabled&&<tr><td>离职经济补偿</td><td>{setup.terminationType==="forced"?`N=${percent(terminationBreakdown.appliedN)}`:`N=${percent(terminationBreakdown.appliedN)} + X=${terminationBreakdown.extraMonths}`}</td><td>¥ {money(terminationTotal)}</td></tr>}
               {reimbursementEnabled&&<tr><td>报销欠款</td><td>{setup.reimbursementIncluded?"计入本次合计":"仅作记录，不计入合计"}</td><td>¥ {money(Number(setup.reimbursementAmount||0))}</td></tr>}
               {wageEnabled&&totals.paid>0&&<tr className="report-supplement-row"><td>后续补发工资</td><td>参考信息，不重复计入</td><td>¥ {money(totals.paid)}</td></tr>}
             </tbody>
@@ -591,7 +618,7 @@ export default function Home() {
           <dl><div><dt>数据来源</dt><dd>用户填报及本地测算明细</dd></div><div><dt>生成方式</dt><dd>系统自动测算</dd></div><div><dt>使用范围</dt><dd>复核、沟通与证据整理参考</dd></div></dl>
         </section>
 
-        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
+        <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见或缴费核定结论。离职原因、解除程序、经济补偿资格、年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>
         <footer className="report-footer"><span>{reportNumber}</span><span>薪资计算器 · 系统生成</span><span>第 1 页</span></footer>
       </article>
     </section>

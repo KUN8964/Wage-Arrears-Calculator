@@ -62,6 +62,7 @@ Before generating code, output:
 24. 调休折现仅指休息日加班后尚未安排补休的工资报酬，按日工资的 200% 测算；同一休息日加班不得同时填入“休息日加班工资”和“调休未兑现”。
 25. 年假、加班和调休问题卡必须提供就地关闭入口；关闭只取消本次事项选择，使其立即退出校验、总计和报告，不清空已填写草稿，重新选择时恢复原值。
 26. 产品对外名称统一为“薪资计算器”，覆盖页面、浏览器元数据、打印报告、导出文件名和项目说明；年假摘要在显示折算天数时必须同时展示“当年在职日历天数 ÷ 365 × 全年法定天数 − 已休天数，舍去不足 1 天”的可核对过程。
+27. 新增单一且互斥的“离职经济补偿”事项：被迫离职按 N，裁员/公司解除按 N+X；N 按本单位工龄的 1 / 1 / 0.5 规则计算，工资基数为解除前 12 个月平均应得工资并可回退合同月薪；X 默认 1 且只允许 0–9 整数，X 部分工资基数可单独修改。填写当地上年度职工月平均工资后，N 部分应用 3 倍工资基数及最高 12 年封顶；X 不套用 N 的高工资封顶。界面必须提示经济性裁员通常仅为 N，额外 1 个月主要关联法定代通知金条件或双方约定。
 
 ## PROTECTED Product Decisions
 
@@ -99,7 +100,7 @@ Before generating code, output:
 
 ### Step 2 · 选择发生的事项
 
-使用八个多选卡片：
+使用九个多选卡片：
 
 - 工资少发或未发
 - 社保少缴或未缴
@@ -109,6 +110,7 @@ Before generating code, output:
 - 未休年假折现
 - 加班工资未支付
 - 调休尚未兑现
+- 离职经济补偿
 
 未选择的事项不得显示其输入字段，也不得产生该项欠款。
 
@@ -149,6 +151,16 @@ Before generating code, output:
 - 可填写报销事项说明，用于结果页和报告展示。
 - 默认“计入合计”；可切换为“仅记录”，适用于凭证尚待核验或暂不主张的情况。
 - 不要求上传发票或图片，避免增加使用成本和隐私风险。
+
+#### 离职经济补偿模块
+
+- 事项内部二选一：被迫离职（N）或裁员/公司解除（N+X），两者不能重复计入。
+- 统计截止日期作为解除或终止日期；如日期不同，用户回到基础事实修改。
+- N 按本单位工作年限自动计算；不足一年部分满 6 个月计 1，不满 6 个月计 0.5。
+- N 的月工资基数优先使用解除前 12 个月平均应得工资；留空时显式回退合同月薪。
+- 裁员/公司解除模式显示 X，默认 1，只接受 0–9 整数；额外部分基数可单独修改。
+- 当地上年度职工月平均工资为可选高级输入；填写后仅对 N 部分应用 3 倍工资及 12 年封顶。
+- 显示法律口径提示：经济性裁员通常支付 N；额外 1 个月不当然适用于所有裁员。
 
 ### Step 4 · 推定确认
 
@@ -199,7 +211,7 @@ Before generating code, output:
 - `employmentDate`: `YYYY-MM-DD`
 - `cutoffDate`: `YYYY-MM-DD`
 - `contractPay`: non-negative number
-- `selectedClaims`: subset of `wage | social | fund | doublePay | reimbursement | annualLeave | overtime | compTime`
+- `selectedClaims`: subset of `wage | social | fund | doublePay | reimbursement | annualLeave | overtime | compTime | termination`
 - `reimbursementAmount`: non-negative number
 - `reimbursementNote`: string
 - `reimbursementIncluded`: boolean；默认 true
@@ -221,6 +233,15 @@ Before generating code, output:
 - `outstandingCompTimeDays`: non-negative number；仅填休息日加班形成且尚未补休的天数。
 - `restDayClaimsDistinct`: boolean；同时填写休息日加班时数和未补休天数时，必须确认不是同一批记录。
 - JSON 备份版本升级为 8；旧数据缺少上述字段时按默认值迁移，不改变既有项目金额。
+
+### Termination Compensation Setup
+
+- `terminationType`: `forced | layoff`；默认 `forced`。
+- `terminationAveragePay`: non-negative number；N 的解除前 12 个月平均应得工资，为空时回退合同月薪。
+- `terminationAdditionalMonths`: integer 0–9；默认 1，仅裁员/公司解除模式使用。
+- `terminationExtraPayBase`: non-negative number；X 部分每月工资基数，为空时回退 N 的平均工资基数。
+- `terminationLocalAveragePay`: non-negative number；可选，用于触发 N 部分的 3 倍工资基数和最高 12 年封顶。
+- JSON 备份版本升级为 9；旧数据缺少上述字段时按默认值迁移，不改变既有项目金额。
 
 ### Contribution Setup
 
