@@ -278,6 +278,7 @@ export default function Home() {
   const reportMonth=setup.cutoffDate ? setup.cutoffDate.slice(0,7) : "—";
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
   const toggleClaim=(claim:Claim)=>setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
+  const closeClaim=(claim:Claim)=>setSelectedClaims(current=>current.filter(item=>item!==claim));
 
   const update = (id: number, key: keyof Row, value: string) => setRows(prev => prev.map(r => r.id === id ? {
     ...r, [key]: key === "wageMonth" || key === "payDate" || key === "note" || key === "status" ? value : Number(value),
@@ -392,7 +393,7 @@ export default function Home() {
         <div className="question-stack">
           {wageEnabled&&<article className="question-module"><header><b>欠</b><div><strong>工资少发或未发</strong><small>开始欠薪前按足额发放，之后默认未发</small></div></header><div className="module-fields"><label><span>从哪个月开始欠薪？</span><input type="month" value={setup.arrearsStartMonth} onChange={e=>setSetup(s=>({...s,arrearsStartMonth:e.target.value}))}/></label><label><span>首个欠薪月实际发了多少？</span><div className="rate-choices wage-rate-choices">{[0,30,50,100].map(rate=><button key={rate} className={setup.firstArrearsPaidRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,firstArrearsPaidRate:rate}))}>{rate}%</button>)}<div className="money-input custom-rate-input"><i>%</i><input aria-label="首个欠薪月自定义已发比例" type="number" min="0" max="100" value={setup.firstArrearsPaidRate||""} onChange={e=>setSetup(s=>({...s,firstArrearsPaidRate:Number(e.target.value)}))}/></div></div></label></div></article>}
           {annualLeaveEnabled&&<article className="question-module rights-module">
-            <header><b>年</b><div><strong>未休年假折现</strong><small>离职当年自动折算，正常工资已支付时只计额外 200%</small></div></header>
+            <header><b>年</b><div><strong>未休年假折现</strong><small>离职当年自动折算，正常工资已支付时只计额外 200%</small></div><button className="question-close" type="button" aria-label="关闭未休年假折现" onClick={()=>closeClaim("annualLeave")}>关闭此项</button></header>
             <div className="module-fields rights-fields">
               <label><span>累计工作年限</span><input type="number" min="0" step="0.1" value={setup.annualLeaveWorkYears||""} onChange={e=>setSetup(s=>({...s,annualLeaveWorkYears:Number(e.target.value)}))}/><small>包含在其他单位的累计工作时间</small></label>
               <label><span>统计当年已休年假</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.annualLeaveTakenDays||""} onChange={e=>setSetup(s=>({...s,annualLeaveTakenDays:Number(e.target.value)}))}/><span>天</span></div></label>
@@ -405,7 +406,7 @@ export default function Home() {
             </div>
           </article>}
           {overtimeEnabled&&<article className="question-module rights-module">
-            <header><b>加</b><div><strong>加班工资未支付</strong><small>三类加班分开填写，系统按 150% / 200% / 300% 测算</small></div></header>
+            <header><b>加</b><div><strong>加班工资未支付</strong><small>三类加班分开填写，系统按 150% / 200% / 300% 测算</small></div><button className="question-close" type="button" aria-label="关闭加班工资未支付" onClick={()=>closeClaim("overtime")}>关闭此项</button></header>
             <div className="module-fields rights-fields">
               <label><span>加班工资月基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.overtimeWageBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,overtimeWageBase:Number(e.target.value)}))}/></div><small>约定或当地裁审口径不同时可修改</small></label>
               <label><span>工作日延时加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.weekdayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,weekdayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 150%</small></label>
@@ -416,7 +417,7 @@ export default function Home() {
             </div>
           </article>}
           {compTimeEnabled&&<article className="question-module rights-module">
-            <header><b>休</b><div><strong>调休尚未兑现</strong><small>仅计算休息日加班后仍未安排补休的部分</small></div></header>
+            <header><b>休</b><div><strong>调休尚未兑现</strong><small>仅计算休息日加班后仍未安排补休的部分</small></div><button className="question-close" type="button" aria-label="关闭调休尚未兑现" onClick={()=>closeClaim("compTime")}>关闭此项</button></header>
             <div className="module-fields rights-fields">
               <label><span>尚未补休的休息日加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.outstandingCompTimeDays||""} onChange={e=>setSetup(s=>({...s,outstandingCompTimeDays:Number(e.target.value)}))}/><span>天</span></div><small>按日工资 × 200% 测算</small></label>
               <label><span>调休折现月工资基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.compTimeWageBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,compTimeWageBase:Number(e.target.value)}))}/></div></label>

@@ -2,8 +2,8 @@
 
 ## Current Progress
 
-- 当前阶段：年假折现、加班工资与调休折现已发布。
-- 当前交付目标：已完成；后续根据真实案件证据与当地裁审口径继续校准提示文案。
+- 当前阶段：年假、加班与调休卡片就地关闭交互开发中。
+- 当前交付目标：允许用户在问题步骤纠正误选，同时保留已填草稿并解除下一步阻塞。
 
 ## Stage Checklist
 
@@ -34,6 +34,8 @@
 | 21 | 纯函数测试与引导式输入实现 | Completed |
 | 22 | 总计、报告、备份迁移与回归验证 | Completed |
 | 23 | GitHub Pages 与 Sites 双端部署 | Completed |
+| 24 | 三项权益卡片关闭交互与草稿保留测试 | In Progress |
+| 25 | 回归验证与双端发布 | Pending |
 
 ## MVP Scope After Confirmation
 
@@ -46,5 +48,5 @@
 
 ## Locked Contract Summary
 
-- 24 项 LOCKED 合同已记录在 `findings.md`；其中新增 3 项由用户本轮明确确认。
+- 25 项 LOCKED 合同已记录在 `findings.md`；其中第 25 项由用户本轮明确确认。
 - 编码开始前，执行者必须逐项复述并获得用户确认。

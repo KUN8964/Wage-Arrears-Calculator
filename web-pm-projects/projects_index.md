@@ -14,5 +14,5 @@ Last updated: 2026-07-14
 - Reference project: 当前已上线的薪保计算器。
 - Stack: Next.js 16、React 19、vinext、浏览器 localStorage、Sites 私有部署。
 - Documents: `web-pm-projects/proj_20260713_001/`
-- LOCKED contracts: 24
+- LOCKED contracts: 25
 - PROTECTED decisions: 3

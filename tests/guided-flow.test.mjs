@@ -51,6 +51,20 @@ test("adds annual leave, overtime and uncompensated rest-day leave to the guided
   assert.match(page, /version:8/);
 });
 
+test("lets users close optional rights modules without clearing their draft values", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /aria-label="关闭未休年假折现"/);
+  assert.match(page, /aria-label="关闭加班工资未支付"/);
+  assert.match(page, /aria-label="关闭调休尚未兑现"/);
+  assert.match(page, /onClick=\{\(\)=>closeClaim\("annualLeave"\)\}/);
+  assert.match(page, /onClick=\{\(\)=>closeClaim\("overtime"\)\}/);
+  assert.match(page, /onClick=\{\(\)=>closeClaim\("compTime"\)\}/);
+  assert.match(page, /const closeClaim=\(claim:Claim\)=>setSelectedClaims\(current=>current\.filter\(item=>item!==claim\)\)/);
+  assert.match(css, /\.question-close/);
+  assert.doesNotMatch(page, /closeClaim=.*setSetup/);
+});
+
 test("provides a restrained Swiss-style A4 report that exports through system print", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
