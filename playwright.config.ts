@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1] || "Wage-Arrears-Calculator";
+const basePath = process.env.GITHUB_PAGES === "true" ? `/${repositoryName}` : "";
+
 export default defineConfig({
   testDir:"./tests/e2e",
   fullyParallel:true,
@@ -8,7 +11,7 @@ export default defineConfig({
   workers:process.env.CI ? 1 : undefined,
   reporter:process.env.CI ? [["list"], ["html", { open:"never" }]] : "list",
   use:{
-    baseURL:"http://127.0.0.1:3100",
+    baseURL:`http://127.0.0.1:3100${basePath}`,
     trace:"retain-on-failure",
     screenshot:"only-on-failure",
   },
@@ -18,7 +21,7 @@ export default defineConfig({
   }],
   webServer:{
     command:"npm run dev -- --host 127.0.0.1 --port 3100",
-    url:"http://127.0.0.1:3100",
+    url:`http://127.0.0.1:3100${basePath}/`,
     reuseExistingServer:!process.env.CI,
     timeout:120_000,
   },
