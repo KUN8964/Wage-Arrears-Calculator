@@ -15,7 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   build:
+    needs: e2e
     runs-on: ubuntu-latest
     env:
       GITHUB_PAGES: "true"
@@ -30,15 +43,9 @@ jobs:
         with:
           enablement: true
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - name: Run browser interaction tests
-        env:
-          # Exercise the app at its local root; static Pages basePath is covered by build tests.
-          GITHUB_PAGES: "false"
-        run: npm run test:e2e
       - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v3
         with:
