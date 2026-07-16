@@ -11,6 +11,8 @@ test("defaults to a progressive guided calculator", async () => {
   assert.match(page, /查看精算明细/);
   assert.match(page, /selectedClaims\.includes\("wage"\)/);
   assert.match(page, /flowStep === "results"/);
+  assert.match(page, /exceptionRows\.map/);
+  assert.doesNotMatch(page, /exceptionRows\.slice\(0,8\)/);
 });
 
 test("keeps unselected claims out of generated rows", async () => {
