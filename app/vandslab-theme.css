@@ -415,6 +415,7 @@
   .rate-presets button,
   .has-paid button,
   .termination-kind button,
+  .termination-confirmations button,
   .reimbursement-policy button,
   .injury-kind > button,
   .injury-responsibility button { min-height: 48px; border: 1px solid var(--vd-line-light); border-radius: 0; background: var(--vd-color-paper); color: var(--vd-type-body-on-light); font-size: var(--vd-text-label); font-weight: var(--vd-font-weight-semibold); box-shadow: none; }
@@ -422,6 +423,7 @@
   .rate-presets button.active,
   .has-paid button.active,
   .termination-kind button.active,
+  .termination-confirmations button.active,
   .reimbursement-policy button.active,
   .injury-kind > button.active,
   .injury-responsibility button.active { border-color: var(--vd-color-ink); background: var(--vd-surface-stage); color: var(--vd-text-accent); box-shadow: none; }
@@ -491,6 +493,13 @@
   .advanced-base label { display: block; margin-top: var(--vd-space-4); }
 
   .termination-kind { margin: 0; padding: var(--vd-space-4) var(--vd-space-6) 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border: 0; border-radius: 0; background: var(--vd-color-paper); }
+  .termination-confirmations { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--vd-color-ink); background: var(--vd-color-ink); }
+  .termination-confirmations fieldset { min-width: 0; margin: 0; padding: var(--vd-space-4); border: 0; border-radius: 0; background: var(--vd-color-paper); }
+  .termination-confirmations legend { float: left; width: 100%; margin: 0 0 var(--vd-space-3); padding: 0; color: var(--vd-type-support-on-light); font-size: var(--vd-text-body-sm); font-weight: var(--vd-font-weight-bold); line-height: 1.4; }
+  .termination-confirmations fieldset > div { clear: both; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 0; }
+  .termination-confirmations small { display: block; margin-top: var(--vd-space-3); color: var(--vd-type-caption-on-light); font-size: var(--vd-text-caption); }
+  .termination-status { grid-column: 1 / -1; margin: 0; padding: var(--vd-space-4); border: 0; border-left: 4px solid var(--vd-color-acid); border-radius: 0; background: var(--vd-surface-stage); color: var(--vd-type-body-on-dark); }
+  .termination-status.warning { border-left-color: var(--vd-color-acid); background: var(--vd-surface-stage); color: var(--vd-type-body-on-dark); }
   .reimbursement-policy { padding: var(--vd-space-4); display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 1px; }
   .reimbursement-policy > span { font-size: var(--vd-text-label); font-weight: var(--vd-font-weight-bold); }
 
@@ -740,8 +749,10 @@
   .compact-summary,
   .injury-deadlines { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .termination-kind,
+  .termination-confirmations,
   .injury-kind,
   .injury-responsibility > div { grid-template-columns: 1fr; }
+  .termination-confirmations fieldset > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .reimbursement-policy,
   .has-paid { grid-template-columns: 1fr; gap: var(--vd-space-2); }
   .reimbursement-policy button,

@@ -56,7 +56,7 @@ test("rejects impossible dates, negative amounts and unknown claims", () => {
 
 test("rejects unsupported versions, excessive rows and oversized files", () => {
   const future = validBackup();
-  future.version = 10;
+  future.version = 11;
   assert.throws(() => validateBackupPayload(future), BackupValidationError);
 
   const excessive = validBackup();

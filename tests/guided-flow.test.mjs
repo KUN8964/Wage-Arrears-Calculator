@@ -32,7 +32,7 @@ test("adds reimbursement as an optional claim with an explicit total policy", as
   assert.match(page, /计入本次合计/);
   assert.match(page, /仅在报告中记录/);
   assert.match(page, /reimbursementEnabled&&setup\.reimbursementIncluded/);
-  assert.match(page, /version:9/);
+  assert.match(page, /version:10/);
 });
 
 test("adds annual leave, overtime and uncompensated rest-day leave to the guided total and report", async () => {
@@ -48,7 +48,7 @@ test("adds annual leave, overtime and uncompensated rest-day leave to the guided
   assert.match(page, /annualLeaveTotal/);
   assert.match(page, /overtimeTotal/);
   assert.match(page, /compTimeTotal/);
-  assert.match(page, /version:9/);
+  assert.match(page, /version:10/);
 });
 
 test("lets users close optional rights modules without clearing their draft values", async () => {
@@ -87,12 +87,16 @@ test("adds mutually exclusive N and N plus X termination compensation", async ()
   assert.match(page, /裁员\/公司解除（N\+X）/);
   assert.match(page, /terminationType/);
   assert.match(page, /terminationAdditionalMonths/);
+  assert.match(page, /是否已经发送依据第 38 条解除劳动合同的通知/);
+  assert.match(page, /是否保留通知送达证明/);
+  assert.match(page, /forcedNoticeSent/);
+  assert.match(page, /forcedNoticeProof/);
   assert.match(page, /min="0" max="9" step="1"/);
   assert.match(page, /经济性裁员通常为 N，并不当然增加 1 个月/);
   assert.match(page, /terminationCompensation/);
   assert.match(page, /terminationTotal/);
   assert.match(page, /离职经济补偿.*money\(terminationTotal\)/s);
-  assert.match(page, /version:9/);
+  assert.match(page, /version:10/);
 });
 
 test("adds a closable work injury screening without adding an estimated award to the total", async () => {

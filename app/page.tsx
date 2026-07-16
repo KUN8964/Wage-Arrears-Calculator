@@ -34,6 +34,7 @@ const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedU
 type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime" | "termination" | "workInjury";
 type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
 type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
+type Confirmation = "yes" | "no" | "unknown";
 type QuickSetup = {
   employmentDate: string; cutoffDate: string; contractStart: string; contractEnd: string; contractPay: number;
   arrearsStartMonth: string; firstArrearsPaidRate: number;
@@ -45,6 +46,7 @@ type QuickSetup = {
   overtimeWageBase: number; weekdayOvertimeHours: number; restDayOvertimeHours: number; holidayOvertimeHours: number;
   compTimeWageBase: number; outstandingCompTimeDays: number; restDayClaimsDistinct: boolean;
   terminationType: "forced" | "layoff"; terminationAveragePay: number; terminationAdditionalMonths: number; terminationExtraPayBase: number; terminationLocalAveragePay: number;
+  forcedNoticeSent: Confirmation; forcedNoticeProof: Confirmation;
   workInjuryKind: keyof typeof WORK_INJURY_KINDS; workInjuryDate: string; workInjuryCommuteResponsibility: "nonPrimary" | "primary" | "pending"; workInjuryEmployerApplied: "yes" | "no" | "unknown";
 };
 type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
@@ -60,6 +62,7 @@ const defaultSetup: QuickSetup = {
   overtimeWageBase: 0, weekdayOvertimeHours: 0, restDayOvertimeHours: 0, holidayOvertimeHours: 0,
   compTimeWageBase: 0, outstandingCompTimeDays: 0, restDayClaimsDistinct: false,
   terminationType:"forced", terminationAveragePay:0, terminationAdditionalMonths:1, terminationExtraPayBase:0, terminationLocalAveragePay:0,
+  forcedNoticeSent:"unknown", forcedNoticeProof:"unknown",
   workInjuryKind:"unclear", workInjuryDate:"", workInjuryCommuteResponsibility:"pending", workInjuryEmployerApplied:"unknown",
 };
 const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] = [
@@ -313,7 +316,7 @@ export default function Home() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪资计算器明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:9, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
+    const data = JSON.stringify({ version:10, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
   };
   const importData = (file?: File) => {
@@ -480,6 +483,13 @@ export default function Home() {
             <div className="module-fields termination-fields">
               <label><span>解除前 12 个月平均应得工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationAveragePay||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,terminationAveragePay:Number(e.target.value)}))}/></div><small>包含奖金、津贴和补贴；未满 12 个月按实际月份平均</small></label>
               {setup.terminationType==="layoff"&&<><label><span>额外补偿月数 X</span><div className="money-input unit-input"><input aria-label="额外补偿月数X" type="number" min="0" max="9" step="1" value={setup.terminationAdditionalMonths} onChange={e=>setSetup(s=>({...s,terminationAdditionalMonths:Math.min(9,Math.max(0,Math.trunc(Number(e.target.value)||0)))}))}/><span>个月</span></div><small>默认 1，可按通知、协议或实际主张改为 0–9 的整数</small></label><label><span>X 部分每月工资基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationExtraPayBase||""} placeholder={`默认 ${effectiveTerminationAveragePay}`} onChange={e=>setSetup(s=>({...s,terminationExtraPayBase:Number(e.target.value)}))}/></div><small>法定代通知金通常按上一个月工资；协议额外补偿按约定填写</small></label></>}
+              {setup.terminationType==="forced"&&<div className="termination-confirmations">
+                <fieldset><legend>是否已经发送依据第 38 条解除劳动合同的通知？</legend><div>{([['yes','已发送'],['no','未发送'],['unknown','不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.forcedNoticeSent===key?"active":""} aria-pressed={setup.forcedNoticeSent===key} onClick={()=>setSetup(s=>({...s,forcedNoticeSent:key,forcedNoticeProof:key==="yes"?s.forcedNoticeProof:"unknown"}))}>{label}</button>)}</div><small>这里只确认通知状态，不要求填写经过。</small></fieldset>
+                {setup.forcedNoticeSent==="yes"&&<fieldset><legend>是否保留通知送达证明？</legend><div>{([['yes','已保留'],['no','未保留'],['unknown','不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.forcedNoticeProof===key?"active":""} aria-pressed={setup.forcedNoticeProof===key} onClick={()=>setSetup(s=>({...s,forcedNoticeProof:key}))}>{label}</button>)}</div><small>例如 EMS 回执、邮件记录、微信或钉钉送达记录。</small></fieldset>}
+                {setup.forcedNoticeSent==="no"&&<p className="termination-status warning"><b>程序尚未完成：</b>当前只测算 N，发送解除通知前建议先固定欠薪、社保及劳动关系证据。</p>}
+                {setup.forcedNoticeSent==="unknown"&&<p className="termination-status"><b>需要确认：</b>无法确认通知状态时，报告将把被迫离职补偿标记为待核验。</p>}
+                {setup.forcedNoticeSent==="yes"&&setup.forcedNoticeProof!=="yes"&&<p className="termination-status warning"><b>送达证据待补充：</b>已填写发送通知，但尚未确认保留送达证明。</p>}
+              </div>}
               <div className="rights-summary termination-summary"><div><span>系统计算 N</span><strong>{percent(terminationBreakdown.rawN)}</strong></div><div><span>N 部分采用基数</span><strong>¥ {money(terminationBreakdown.nMonthlyBase)}</strong></div><div><span>额外月数 X</span><strong>{terminationBreakdown.extraMonths}</strong></div><div><span>补偿测算合计</span><strong>¥ {money(terminationTotal)}</strong></div></div>
               <p className="termination-formula">N 部分：{percent(terminationBreakdown.appliedN)} × ¥ {money(terminationBreakdown.nMonthlyBase)} = ¥ {money(terminationBreakdown.economic)}{setup.terminationType==="layoff"&&<>；X 部分：{terminationBreakdown.extraMonths} × ¥ {money(terminationBreakdown.extraMonthlyBase)} = ¥ {money(terminationBreakdown.extra)}</>}</p>
             </div>
