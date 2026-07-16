@@ -184,6 +184,7 @@ test("uses the contract salary as the expected base while keeping fund floors", 
   assert.match(page, /Math\.max\(inferredFundPaidRate/);
   assert.match(page, /公司实际缴纳 = 实际申报基数 × 五险公司费率合计/);
   assert.match(page, /应缴金额 = 应缴测算基数 × 五险公司费率合计/);
+  assert.match(page, /默认参考比例/);
   assert.match(page, /fundRate: 5/);
 });
 
@@ -202,6 +203,7 @@ test("computes five-insurance actual payment and shortfall from two bases", asyn
 test("does not ask users for a contract start date that the calculation does not use", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(page, /劳动合同开始日/);
+  assert.match(page, /未签订劳动合同或合同到期仍在工作/);
   assert.match(page, /合同上写的最后一天/);
   assert.match(page, /双倍工资只需要合同期满日/);
 });
