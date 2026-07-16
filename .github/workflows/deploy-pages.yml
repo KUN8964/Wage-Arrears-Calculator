@@ -34,7 +34,11 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run test:e2e
+      - name: Run browser interaction tests
+        env:
+          # Exercise the app at its local root; static Pages basePath is covered by build tests.
+          GITHUB_PAGES: "false"
+        run: npm run test:e2e
       - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v3
         with:
