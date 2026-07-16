@@ -1,10 +1,6 @@
-const positive = value => Math.max(0, Number(value) || 0);
+import { parseIsoDateUtc } from "./date-utils.mjs";
 
-const utcDate = value => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day));
-};
+const positive = value => Math.max(0, Number(value) || 0);
 
 export const statutoryAnnualLeaveDays = cumulativeWorkYears => {
   const years = positive(cumulativeWorkYears);
@@ -15,8 +11,8 @@ export const statutoryAnnualLeaveDays = cumulativeWorkYears => {
 };
 
 export const currentYearEmploymentDays = (employmentDate, cutoffDate) => {
-  const employment = utcDate(employmentDate);
-  const cutoff = utcDate(cutoffDate);
+  const employment = parseIsoDateUtc(employmentDate);
+  const cutoff = parseIsoDateUtc(cutoffDate);
   if (!employment || !cutoff || cutoff < employment) return 0;
   const yearStart = new Date(Date.UTC(cutoff.getUTCFullYear(), 0, 1));
   const start = employment > yearStart ? employment : yearStart;

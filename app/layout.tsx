@@ -5,7 +5,6 @@ import "./vandslab-theme.css";
 import "./report-theme.css";
 
 export function generateMetadata(): Metadata {
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://xinbao-qingsuantai.kunkun8964.chatgpt.site").replace(/\/$/, "");
   const basePath = process.env.GITHUB_PAGES === "true" ? `/${process.env.GITHUB_REPOSITORY?.split("/")[1] || "Wage-Arrears-Calculator"}` : "";
   return {
     title: "薪资计算器｜工资、社保、年假与加班权益测算",

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { assertBackupFileSize, BackupValidationError, validateBackupPayload } from "./backup-validation.mjs";
+import { parseIsoDateLocal } from "./date-utils.mjs";
 import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionForMonth, totalEmployerRate } from "./contribution-calculator.mjs";
 import { annualLeaveCompensation, compTimeCompensation, currentYearEmploymentDays, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
 import { terminationCompensation } from "./termination-calculator.mjs";
@@ -88,7 +90,7 @@ const exampleRows: Row[] = [
   [12,"2026/5/10",0,"实际应发4月工资",0,"未结清",18000,18000,20000,398.88,4986,3933.668,250,2490,2101.2],
   [13,"2026/6/10",0,"实际应发5月工资",0,"未结清",18000,18000,20000,398.88,4986,3933.668,250,2490,2101.2],
   [14,"2026/7/10",0,"实际应发6月工资",0,"未结清",18000,18000,20000,398.88,4986,3933.668,250,2490,2101.2],
-].map(([id,payDate,normalPay,note,paid,status,duePay,arrears,contractPay,_legacySocialPaid,socialActualBase,_legacySocialDue,fundPaid,fundBase,fundDue], index) => {
+].map(([id,payDate,normalPay,note,paid,status,duePay,arrears,contractPay,,socialActualBase,,fundPaid,,fundDue], index) => {
   const start = new Date(2025, 5 + Math.max(0, index - 1), 1);
   const wageMonth = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
   const targetBase = Number(contractPay || 0);
@@ -106,12 +108,6 @@ const monthCountBetween = (startValue: string, endValue: string) => {
   return (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1;
 };
 const monthIsWithin = (month: string, startMonth: string, endMonth: string) => Boolean(month && startMonth && endMonth && month >= startMonth && month <= endMonth);
-const paidMonthsWithin = (employmentDate: string, cutoffDate: string, paidStart: string, paidEnd: string) => {
-  if (!employmentDate || !cutoffDate || !paidStart || !paidEnd || paidStart > paidEnd) return 0;
-  const start = paidStart > employmentDate.slice(0,7) ? paidStart : employmentDate.slice(0,7);
-  const end = paidEnd < cutoffDate.slice(0,7) ? paidEnd : cutoffDate.slice(0,7);
-  return start <= end ? monthCountBetween(`${start}-01`, `${end}-01`) : 0;
-};
 const normalizeRow = (row: Row, index = 0): Row => {
   if (row.socialRate != null && row.fundRate != null) return row;
   const fallback = exampleRows[Math.min(index, exampleRows.length - 1)] || blankRow();
@@ -127,7 +123,7 @@ const normalizeRow = (row: Row, index = 0): Row => {
 const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const percent = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const csvValue = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : String(value ?? "");
-const atMidnight = (value: string) => value ? new Date(`${value}T00:00:00`) : null;
+const atMidnight = (value: string) => parseIsoDateLocal(value);
 const addDays = (date: Date, days: number) => { const next = new Date(date); next.setDate(next.getDate() + days); return next; };
 const addMonths = (date: Date, months: number) => {
   const targetMonth = date.getMonth() + months;
@@ -139,7 +135,11 @@ const normalizeSetup = (old: LegacyQuickSetup = {}): QuickSetup => {
   const oldEnd = old.endMonth ? new Date(Number(old.endMonth.slice(0,4)), Number(old.endMonth.slice(5,7)), 0) : null;
   const employmentDate = old.employmentDate || (old.startMonth ? `${old.startMonth}-01` : "");
   const cutoffDate = old.cutoffDate || (oldEnd ? `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,"0")}-${String(oldEnd.getDate()).padStart(2,"0")}` : "");
-  const {startMonth: _startMonth, endMonth: _endMonth, duePay: _duePay, actualPay: _actualPay, ...current} = old;
+  const current = {...old};
+  delete current.startMonth;
+  delete current.endMonth;
+  delete current.duePay;
+  delete current.actualPay;
   const rates: SocialRates = {
     pension:Number(old.socialPensionRate ?? DEFAULT_SOCIAL_RATES.pension), unemployment:Number(old.socialUnemploymentRate ?? DEFAULT_SOCIAL_RATES.unemployment),
     injury:Number(old.socialInjuryRate ?? DEFAULT_SOCIAL_RATES.injury), maternity:Number(old.socialMaternityRate ?? DEFAULT_SOCIAL_RATES.maternity), medical:Number(old.socialMedicalRate ?? DEFAULT_SOCIAL_RATES.medical),
@@ -206,9 +206,12 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [saved, setSaved] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
+  const cutoffTouched = useRef(false);
 
+  // Restore browser-only state once after hydration for this local-first app.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    setSetup(current => current.cutoffDate ? current : {...current,cutoffDate:todayInputValue()});
+    if (!cutoffTouched.current) setSetup(current => current.cutoffDate ? current : {...current,cutoffDate:todayInputValue()});
     const cached = localStorage.getItem("xinbao-rows");
     if (cached) try {
       const parsed = JSON.parse(cached) as Row[];
@@ -226,6 +229,7 @@ export default function Home() {
       setFlowStep(meta.flowStep || "results");
     } catch { /* use defaults */ }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime"), terminationEnabled=selectedClaims.includes("termination"), workInjuryEnabled=selectedClaims.includes("workInjury");
   const inferredEmploymentMonth=setup.employmentDate.slice(0,7);
@@ -251,8 +255,6 @@ export default function Home() {
   const socialRates: SocialRates = {pension:Number(setup.socialPensionRate||0),unemployment:Number(setup.socialUnemploymentRate||0),injury:Number(setup.socialInjuryRate||0),maternity:Number(setup.socialMaternityRate||0),medical:Number(setup.socialMedicalRate||0)};
   const effectiveSocialRate = socialEnabled ? totalEmployerRate(socialRates) : 0;
   const effectiveSocialActualBase = socialEnabled&&setup.socialHasPaid ? Number(setup.socialActualBase||0) : 0;
-  const setupSocialPaidMonths = socialEnabled&&setup.socialHasPaid&&effectiveSocialActualBase>0 ? paidMonthsWithin(setup.employmentDate,setup.cutoffDate,effectiveSocialStart,setup.socialPaidEndMonth) : 0;
-  const setupFundPaidMonths = fundEnabled&&setup.fundHasPaid&&Number(setup.fundPaid||0)>0 ? paidMonthsWithin(setup.employmentDate,setup.cutoffDate,effectiveFundStart,setup.fundPaidEndMonth) : 0;
   const effectiveSocialBase = socialEnabled ? Number(setup.socialBase||setup.contractPay||0) : 0;
   const effectiveFundBase = fundEnabled ? Number(setup.fundBase||setup.contractPay||0) : 0;
   const inferredFundPaidRate = effectiveFundBase&&setup.fundHasPaid ? Number(setup.fundPaid||0)/effectiveFundBase*100 : 0;
@@ -260,9 +262,6 @@ export default function Home() {
   const setupSocialMonthly = socialContributionForMonth({expectedBase:effectiveSocialBase,actualBase:effectiveSocialActualBase,rates:socialRates});
   const setupSocialExpectedMonthly = setupSocialMonthly.expected;
   const setupSocialActualMonthly = setupSocialMonthly.actual;
-  const setupFundExpectedMonthly = effectiveFundBase*effectiveFundRate/100;
-  const setupSocialDue = setupSocialMonthly.gap*setupSocialPaidMonths + setupSocialExpectedMonthly*Math.max(0,setupMonths-setupSocialPaidMonths);
-  const setupFundDue = Math.max(0,setupFundExpectedMonthly-Number(setup.fundPaid||0))*setupFundPaidMonths + setupFundExpectedMonthly*Math.max(0,setupMonths-setupFundPaidMonths);
   const annualLeaveStatutoryDays=statutoryAnnualLeaveDays(setup.annualLeaveWorkYears);
   const annualLeaveElapsedDays=currentYearEmploymentDays(setup.employmentDate,setup.cutoffDate);
   const annualLeaveCurrentYearDays=annualLeaveEnabled?proratedAnnualLeaveDays({employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate,cumulativeWorkYears:setup.annualLeaveWorkYears,takenDays:setup.annualLeaveTakenDays}):0;
@@ -319,8 +318,34 @@ export default function Home() {
   };
   const importData = (file?: File) => {
     if (!file) return;
+    try {
+      assertBackupFileSize(file.size);
+    } catch (error) {
+      alert(error instanceof BackupValidationError ? error.message : "备份文件无法读取。");
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => { try { const data = JSON.parse(String(reader.result)); if (!Array.isArray(data.rows)) throw new Error(); const importedRule={...defaultRule,...data.doubleRule}; setRows(data.rows.map((row:Row,index:number)=>normalizeRow(row,index))); setDoubleRule(importedRule); setSetup(normalizeSetup({...data.setup,contractEnd:data.setup?.contractEnd||importedRule.contractEnd,cutoffDate:data.setup?.cutoffDate||importedRule.continuedUntil})); setSelectedClaims(Array.isArray(data.selectedClaims)?data.selectedClaims:["wage","social","fund","doublePay"]); setFlowStep("results"); setCaseName(data.caseName || "导入的欠款测算"); } catch { alert("文件无法识别，请选择由本计算器导出的 JSON 文件。"); } };
+    reader.onload = () => {
+      try {
+        const data = validateBackupPayload(JSON.parse(String(reader.result))) as {
+          caseName:string;
+          setup:LegacyQuickSetup;
+          selectedClaims:Claim[];
+          doubleRule?:DoublePayRule;
+          rows:Row[];
+        };
+        const importedRule = {...defaultRule, ...(data.doubleRule || {})};
+        setRows(data.rows.map((row, index) => normalizeRow(row as Row, index)));
+        setDoubleRule(importedRule);
+        setSetup(normalizeSetup({...data.setup, contractEnd:data.setup.contractEnd || importedRule.contractEnd, cutoffDate:data.setup.cutoffDate || importedRule.continuedUntil} as LegacyQuickSetup));
+        setSelectedClaims(data.selectedClaims as Claim[]);
+        setFlowStep("results");
+        setCaseName(data.caseName);
+      } catch (error) {
+        alert(error instanceof BackupValidationError ? `导入失败：${error.message}` : "导入失败：文件不是有效的 JSON 备份。");
+      }
+    };
+    reader.onerror = () => alert("导入失败：无法读取所选文件。");
     reader.readAsText(file);
   };
   const generateRows = () => {
@@ -393,7 +418,7 @@ export default function Home() {
         <p className="step-intro">不需要先理解专业公式。告诉我们任职期间和月薪，下一步再选择发生了什么。</p>
         <div className="basic-fields">
           <label><span>入职日期</span><input type="date" value={setup.employmentDate} onChange={e=>setSetup(s=>({...s,employmentDate:e.target.value,contractStart:s.contractStart||e.target.value}))}/></label>
-          <label><span>统计截止日期</span><input type="date" value={setup.cutoffDate} onChange={e=>setSetup(s=>({...s,cutoffDate:e.target.value}))}/><small>默认今天，也可改为离职或测算日期</small></label>
+          <label><span>统计截止日期</span><input type="date" value={setup.cutoffDate} onChange={e=>{cutoffTouched.current=true; setSetup(s=>({...s,cutoffDate:e.target.value}))}}/><small>默认今天，也可改为离职或测算日期</small></label>
           <label className="salary-field"><span>合同月薪</span><div className="money-input salary-input"><input type="number" min="0" value={setup.contractPay||""} placeholder="例如 20,000" onChange={e=>setSetup(s=>({...s,contractPay:Number(e.target.value)}))}/><span className="salary-unit">元/月</span></div><small>劳动合同约定的税前月工资</small></label>
         </div>
         {setup.employmentDate&&setup.cutoffDate&&setup.employmentDate>setup.cutoffDate&&<p className="inline-error" role="alert">统计截止日期不能早于入职日期。</p>}

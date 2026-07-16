@@ -15,5 +15,10 @@ test("provides a GitHub Pages static deployment workflow", async () => {
   assert.match(workflow, /actions\/deploy-pages@v4/);
   assert.match(workflow, /path: \.\/out/);
   assert.match(workflow, /GITHUB_PAGES: "true"/);
+  assert.match(workflow, /npm run lint/);
+  assert.match(workflow, /npm run typecheck/);
+  assert.match(workflow, /npm test/);
+  assert.match(workflow, /playwright install --with-deps chromium/);
+  assert.match(workflow, /npm run test:e2e/);
   assert.doesNotMatch(layout, /from "next\/headers"/);
 });

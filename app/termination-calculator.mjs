@@ -1,11 +1,6 @@
-const positive = value => Math.max(0, Number(value) || 0);
+import { parseIsoDateUtc } from "./date-utils.mjs";
 
-const utcDate = value => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
-};
+const positive = value => Math.max(0, Number(value) || 0);
 
 const addUtcMonths = (date, months) => {
   const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
@@ -15,8 +10,8 @@ const addUtcMonths = (date, months) => {
 };
 
 export const economicCompensationN = ({ employmentDate, terminationDate }) => {
-  const start = utcDate(employmentDate);
-  const end = utcDate(terminationDate);
+  const start = parseIsoDateUtc(employmentDate);
+  const end = parseIsoDateUtc(terminationDate);
   if (!start || !end || end < start) return 0;
 
   let fullYears = end.getUTCFullYear() - start.getUTCFullYear();

@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 test("calculates statutory annual leave tiers and departure-year proration", async () => {
-  const { statutoryAnnualLeaveDays, proratedAnnualLeaveDays } = await import("../app/leave-overtime-calculator.mjs");
+  const { currentYearEmploymentDays, statutoryAnnualLeaveDays, proratedAnnualLeaveDays } = await import("../app/leave-overtime-calculator.mjs");
   assert.equal(statutoryAnnualLeaveDays(0.9), 0);
   assert.equal(statutoryAnnualLeaveDays(1), 5);
   assert.equal(statutoryAnnualLeaveDays(10), 10);
   assert.equal(statutoryAnnualLeaveDays(20), 15);
   assert.equal(proratedAnnualLeaveDays({ employmentDate:"2026-01-01", cutoffDate:"2026-07-15", cumulativeWorkYears:1, takenDays:0 }), 2);
   assert.equal(proratedAnnualLeaveDays({ employmentDate:"2025-01-01", cutoffDate:"2026-12-31", cumulativeWorkYears:10, takenDays:3 }), 7);
+  assert.equal(currentYearEmploymentDays("2026-02-31", "2026-03-10"), 0);
+  assert.equal(proratedAnnualLeaveDays({ employmentDate:"2026-02-31", cutoffDate:"2026-03-10", cumulativeWorkYears:10 }), 0);
 });
 
 test("calculates the extra 200 percent annual leave compensation and written-waiver exception", async () => {

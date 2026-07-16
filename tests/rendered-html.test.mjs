@@ -47,7 +47,6 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /socialPaid.*socialBase.*socialRate/);
   assert.match(page, /effectiveSocialStart/);
   assert.match(page, /effectiveFundStart/);
-  assert.match(page, /paidMonthsWithin/);
   assert.match(page, /实缴 \{socialPaidMonths\} 个月/);
   assert.match(page, /socialDueFor/);
   assert.match(page, /fundDueFor/);

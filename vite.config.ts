@@ -53,6 +53,9 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,
+        // Browser tests and sandboxed development do not need Miniflare's inspector.
+        // Disabling it avoids binding the default 9229 port and keeps the app testable.
+        inspectorPort: false,
       }),
     ],
   };
