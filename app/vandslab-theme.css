@@ -403,6 +403,68 @@
   .question-close { min-height: 38px; padding: 0 var(--vd-space-3); border: 1px solid var(--vd-line-dark); border-radius: 0; background: transparent; color: var(--vd-type-body-on-dark); font-size: var(--vd-text-caption); font-weight: var(--vd-font-weight-bold); }
   .question-close:hover { border-color: var(--vd-color-acid); color: var(--vd-text-accent); }
 
+  .question-validation {
+    margin-top: var(--vd-space-6);
+    border: 1px solid var(--vd-color-ink);
+    background: var(--vd-color-paper);
+    color: var(--vd-text-on-light);
+  }
+  .question-validation-head {
+    min-height: 92px;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: stretch;
+    border-bottom: 1px solid var(--vd-color-ink);
+    background: var(--vd-surface-stage);
+    color: var(--vd-text-on-dark);
+  }
+  .question-validation-head > span {
+    display: grid;
+    place-items: center;
+    background: var(--vd-surface-action);
+    color: var(--vd-text-on-light);
+    font-family: var(--vd-font-display);
+    font-size: 1.25rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+  }
+  .question-validation-head > div {
+    min-width: 0;
+    padding: var(--vd-space-4) var(--vd-space-5);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .question-validation-head h3,
+  .question-validation-head small { display: block; }
+  .question-validation-head h3 { margin: 0; font-size: 1rem; }
+  .question-validation-head small { margin-top: var(--vd-space-1); color: var(--vd-type-support-on-dark); font-size: var(--vd-text-label); line-height: 1.55; }
+  .question-validation ul { margin: 0; padding: 0; list-style: none; }
+  .question-validation li + li { border-top: 1px solid var(--vd-line-light); }
+  .question-validation li > button {
+    width: 100%;
+    min-height: 64px;
+    padding: var(--vd-space-3) var(--vd-space-5);
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--vd-space-3);
+    border: 0;
+    background: var(--vd-color-paper);
+    color: var(--vd-text-on-light);
+    text-align: left;
+  }
+  .question-validation li > button:hover,
+  .question-validation li > button:focus-visible { background: var(--vd-surface-action); }
+  .question-validation li b { font-variant-numeric: tabular-nums; }
+  .question-validation li span { min-width: 0; font-size: var(--vd-text-body-sm); line-height: 1.55; }
+  .question-validation li i { font-style: normal; font-size: var(--vd-text-label); font-weight: 800; white-space: nowrap; }
+  .next.needs-attention { border: 1px solid var(--vd-color-ink); background: var(--vd-color-paper); color: var(--vd-text-on-light); }
+  .next.needs-attention:hover { background: var(--vd-surface-stage); color: var(--vd-text-accent); }
+  .module-fields input[aria-invalid="true"],
+  .module-fields input[aria-invalid="true"]:focus { outline: 3px solid var(--vd-color-acid); outline-offset: 2px; }
+  .module-fields .money-input:has(input[aria-invalid="true"]) { border-color: var(--vd-color-ink); box-shadow: 0 0 0 3px var(--vd-color-acid); }
+
   .module-fields { padding: var(--vd-space-6); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vd-space-4); background: var(--vd-color-paper); }
   .module-fields label > span { color: var(--vd-type-support-on-light); }
   .module-fields label small { color: var(--vd-type-caption-on-light); }
@@ -886,6 +948,10 @@
   .stepper span { width: auto; height: 42px; }
   .question-module > header { align-items: flex-start; flex-wrap: wrap; padding: var(--vd-space-4); }
   .question-close { margin-left: 62px; }
+  .question-validation-head { grid-template-columns: 58px minmax(0, 1fr); }
+  .question-validation-head > div { padding: var(--vd-space-3); }
+  .question-validation li > button { grid-template-columns: 32px minmax(0, 1fr); padding: var(--vd-space-3); }
+  .question-validation li i { grid-column: 2; }
   .module-fields { padding: var(--vd-space-4); }
   .guided-actions { align-items: stretch; flex-direction: column-reverse; }
   .guided-actions .next,

@@ -36,6 +36,7 @@ type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annua
 type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
 type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
 type Confirmation = "yes" | "no" | "unknown";
+type QuestionIssue = { id:string; message:string; targetId:string };
 type RightsRoute = { id:string; tone:"primary"|"secondary"|"warning"; badge:string; title:string; suitable:string; description:string; steps:string[]; caution:string };
 type RightsPlan = { headline:string; summary:string; routes:RightsRoute[]; evidence:string[]; activeMoneyClaims:string[]; socialGapKind:"none"|"underpaid"|"unpaid" };
 type QuickSetup = {
@@ -297,7 +298,42 @@ export default function Home() {
   const needsRestDayDistinctConfirmation=overtimeEnabled&&compTimeEnabled&&Number(setup.restDayOvertimeHours)>0&&Number(setup.outstandingCompTimeDays)>0;
   const visible = rows.filter(r => (filter === "全部" || r.status === filter) && `${r.payDate}${r.note}`.includes(query));
   const basicReady=Boolean(setup.employmentDate&&setup.cutoffDate&&Number(setup.contractPay)>0&&setup.employmentDate<=setup.cutoffDate);
-  const questionsReady=Boolean(selectedClaims.length&&(!wageEnabled||setup.arrearsStartMonth)&&(!doublePayEnabled||setup.contractEnd)&&(!socialEnabled||(effectiveSocialRate>0&&(!setup.socialHasPaid||(effectiveSocialActualBase>0&&setup.socialPaidEndMonth))))&&(!fundEnabled||(Number(setup.fundRate)>0&&(!setup.fundHasPaid||(Number(setup.fundPaid)>0&&setup.fundPaidEndMonth))))&&(!reimbursementEnabled||Number(setup.reimbursementAmount)>0)&&(!annualLeaveEnabled||Number(setup.annualLeaveWorkYears)>=1)&&(!overtimeEnabled||(Number(setup.weekdayOvertimeHours)>0||Number(setup.restDayOvertimeHours)>0||Number(setup.holidayOvertimeHours)>0))&&(!compTimeEnabled||Number(setup.outstandingCompTimeDays)>0)&&(!needsRestDayDistinctConfirmation||setup.restDayClaimsDistinct));
+  const firstQuestionMonth=setup.employmentDate.slice(0,7), lastQuestionMonth=setup.cutoffDate.slice(0,7);
+  const questionIssues:QuestionIssue[]=[];
+  const addQuestionIssue=(id:string,message:string,targetId:string)=>questionIssues.push({id,message,targetId});
+  if (wageEnabled) {
+    if (!setup.arrearsStartMonth) addQuestionIssue("wage-start","“开始欠薪月份”尚未填写。","question-wage-start");
+    else if (setup.arrearsStartMonth<firstQuestionMonth||setup.arrearsStartMonth>lastQuestionMonth) addQuestionIssue("wage-start","开始欠薪月份必须位于入职月份和统计截止月份之间。","question-wage-start");
+    if (Number(setup.firstArrearsPaidRate)<0||Number(setup.firstArrearsPaidRate)>100) addQuestionIssue("wage-rate","首个欠薪月已发比例只能填写 0%—100%。","question-wage-rate");
+  }
+  if (annualLeaveEnabled&&Number(setup.annualLeaveWorkYears)<1) addQuestionIssue("annual-leave-years","累计工作满 1 年后才享受法定年休假，请核对工作年限。","question-annual-leave-years");
+  if (overtimeEnabled&&Number(setup.weekdayOvertimeHours)<=0&&Number(setup.restDayOvertimeHours)<=0&&Number(setup.holidayOvertimeHours)<=0) addQuestionIssue("overtime-hours","至少填写一类尚未支付的加班时数。","question-overtime-hours");
+  if (compTimeEnabled&&Number(setup.outstandingCompTimeDays)<=0) addQuestionIssue("comp-time-days","“尚未补休的休息日加班”天数尚未填写。","question-comp-time-days");
+  if (needsRestDayDistinctConfirmation&&!setup.restDayClaimsDistinct) addQuestionIssue("rest-day-distinct","请确认加班工资与调休折现不是同一批休息日加班。","question-rest-day-distinct");
+  if (doublePayEnabled) {
+    if (!setup.contractEnd) addQuestionIssue("contract-end","“合同上写的最后一天”尚未填写。","question-contract-end");
+    else if (setup.contractEnd<setup.employmentDate) addQuestionIssue("contract-end","合同期满日不能早于入职日期。","question-contract-end");
+    else if (setup.contractEnd>setup.cutoffDate) addQuestionIssue("contract-end","合同期满日晚于统计截止日期，无法判断到期后持续用工。","question-contract-end");
+  }
+  if (socialEnabled) {
+    if (effectiveSocialRate<=0||effectiveSocialRate>100) addQuestionIssue("social-rate","五险公司费率合计需大于 0% 且不超过 100%。","question-social-rate");
+    if (setup.socialHasPaid) {
+      if (effectiveSocialActualBase<=0) addQuestionIssue("social-base","“公司实际申报缴费基数”尚未填写。","question-social-base");
+      if (!setup.socialPaidEndMonth) addQuestionIssue("social-period","“社保最后缴到月份”尚未填写。","question-social-end");
+      else if (effectiveSocialStart>setup.socialPaidEndMonth||effectiveSocialStart<firstQuestionMonth||setup.socialPaidEndMonth>lastQuestionMonth) addQuestionIssue("social-period","社保实际缴纳期间必须位于入职月份和统计截止月份之间，且开始月份不能晚于截止月份。","question-social-start");
+    }
+  }
+  if (fundEnabled) {
+    if (Number(setup.fundRate)<=0||Number(setup.fundRate)>100) addQuestionIssue("fund-rate","公积金单位比例需大于 0% 且不超过 100%。","question-fund-rate");
+    if (setup.fundHasPaid) {
+      if (Number(setup.fundPaid)<=0) addQuestionIssue("fund-paid","“公司实际每月缴纳金额”尚未填写。","question-fund-paid");
+      if (!setup.fundPaidEndMonth) addQuestionIssue("fund-period","“公积金最后缴到月份”尚未填写。","question-fund-end");
+      else if (effectiveFundStart>setup.fundPaidEndMonth||effectiveFundStart<firstQuestionMonth||setup.fundPaidEndMonth>lastQuestionMonth) addQuestionIssue("fund-period","公积金实际缴纳期间必须位于入职月份和统计截止月份之间，且开始月份不能晚于截止月份。","question-fund-start");
+    }
+  }
+  if (reimbursementEnabled&&Number(setup.reimbursementAmount)<=0) addQuestionIssue("reimbursement-amount","“尚未支付的报销金额”尚未填写。","question-reimbursement-amount");
+  const questionsReady=selectedClaims.length>0&&questionIssues.length===0;
+  const hasQuestionIssue=(targetId:string)=>questionIssues.some(issue=>issue.targetId===targetId);
   const exceptionRows=rows.filter(r=>rowClaimTotal(r)>0);
   const hasReimbursementException=reimbursementEnabled&&Number(setup.reimbursementAmount)>0;
   const hasAnnualLeaveException=annualLeaveEnabled&&annualLeaveTotal>0;
@@ -320,6 +356,19 @@ export default function Home() {
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
   const toggleClaim=(claim:Claim)=>setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
   const closeClaim=(claim:Claim)=>setSelectedClaims(current=>current.filter(item=>item!==claim));
+  const jumpToQuestionIssue=(targetId:string)=>{
+    const target=document.getElementById(targetId);
+    if (!target) return;
+    target.scrollIntoView({behavior:"smooth",block:"center"});
+    window.setTimeout(()=>target.focus({preventScroll:true}),260);
+  };
+  const continueToReview=()=>{
+    if (!questionsReady) {
+      if (questionIssues[0]) jumpToQuestionIssue(questionIssues[0].targetId);
+      return;
+    }
+    setFlowStep("review");
+  };
 
   const update = (id: number, key: keyof Row, value: string) => setRows(prev => prev.map(r => r.id === id ? {
     ...r, [key]: key === "wageMonth" || key === "payDate" || key === "note" || key === "status" ? value : Number(value),
@@ -459,11 +508,11 @@ export default function Home() {
 
       {flowStep==="questions"&&<div className="guided-step">
         <div className="question-stack">
-          {wageEnabled&&<article className="question-module"><header><b>欠</b><div><strong>工资少发或未发</strong><small>开始欠薪前按足额发放，之后默认未发</small></div></header><div className="module-fields"><label><span>从哪个月开始欠薪？</span><input type="month" value={setup.arrearsStartMonth} onChange={e=>setSetup(s=>({...s,arrearsStartMonth:e.target.value}))}/></label><label><span>首个欠薪月实际发了多少？</span><div className="rate-choices wage-rate-choices">{[0,30,50,100].map(rate=><button key={rate} className={setup.firstArrearsPaidRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,firstArrearsPaidRate:rate}))}>{rate}%</button>)}<div className="money-input custom-rate-input"><i>%</i><input aria-label="首个欠薪月自定义已发比例" type="number" min="0" max="100" value={setup.firstArrearsPaidRate||""} onChange={e=>setSetup(s=>({...s,firstArrearsPaidRate:Number(e.target.value)}))}/></div></div></label></div></article>}
+          {wageEnabled&&<article className="question-module"><header><b>欠</b><div><strong>工资少发或未发</strong><small>开始欠薪前按足额发放，之后默认未发</small></div></header><div className="module-fields"><label><span>从哪个月开始欠薪？</span><input id="question-wage-start" aria-invalid={hasQuestionIssue("question-wage-start")} type="month" value={setup.arrearsStartMonth} onChange={e=>setSetup(s=>({...s,arrearsStartMonth:e.target.value}))}/></label><label><span>首个欠薪月实际发了多少？</span><div className="rate-choices wage-rate-choices">{[0,30,50,100].map(rate=><button key={rate} className={setup.firstArrearsPaidRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,firstArrearsPaidRate:rate}))}>{rate}%</button>)}<div className="money-input custom-rate-input"><i>%</i><input id="question-wage-rate" aria-invalid={hasQuestionIssue("question-wage-rate")} aria-label="首个欠薪月自定义已发比例" type="number" min="0" max="100" value={setup.firstArrearsPaidRate||""} onChange={e=>setSetup(s=>({...s,firstArrearsPaidRate:Number(e.target.value)}))}/></div></div></label></div></article>}
           {annualLeaveEnabled&&<article className="question-module rights-module">
             <header><b>年</b><div><strong>未休年假折现</strong><small>离职当年自动折算，正常工资已支付时只计额外 200%</small></div><button className="question-close" type="button" aria-label="关闭未休年假折现" onClick={()=>closeClaim("annualLeave")}>关闭此项</button></header>
             <div className="module-fields rights-fields">
-              <label><span>累计工作年限</span><input type="number" min="0" step="0.1" value={setup.annualLeaveWorkYears||""} onChange={e=>setSetup(s=>({...s,annualLeaveWorkYears:Number(e.target.value)}))}/><small>包含在其他单位的累计工作时间</small></label>
+              <label><span>累计工作年限</span><input id="question-annual-leave-years" aria-invalid={hasQuestionIssue("question-annual-leave-years")} type="number" min="0" step="0.1" value={setup.annualLeaveWorkYears||""} onChange={e=>setSetup(s=>({...s,annualLeaveWorkYears:Number(e.target.value)}))}/><small>包含在其他单位的累计工作时间</small></label>
               <label><span>统计当年已休年假</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.annualLeaveTakenDays||""} onChange={e=>setSetup(s=>({...s,annualLeaveTakenDays:Number(e.target.value)}))}/><span>天</span></div></label>
               <label><span>前 12 个月平均月工资（不含加班费）</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.annualLeaveAveragePay||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,annualLeaveAveragePay:Number(e.target.value)}))}/></div><small>可含绩效、提成、奖金和岗位补贴；未满 12 个月按实际月份</small></label>
               <label><span>往年仍主张的未休天数（可选）</span><div className="money-input unit-input"><input type="number" min="0" step="1" value={setup.annualLeavePriorUnusedDays||""} onChange={e=>setSetup(s=>({...s,annualLeavePriorUnusedDays:Number(e.target.value)}))}/><span>天</span></div><small>请自行核对仲裁时效和证据</small></label>
@@ -478,7 +527,7 @@ export default function Home() {
             <header><b>加</b><div><strong>加班工资未支付</strong><small>三类加班分开填写，系统按 150% / 200% / 300% 测算</small></div><button className="question-close" type="button" aria-label="关闭加班工资未支付" onClick={()=>closeClaim("overtime")}>关闭此项</button></header>
             <div className="module-fields rights-fields">
               <label><span>加班工资月基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.overtimeWageBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,overtimeWageBase:Number(e.target.value)}))}/></div><small>约定或当地裁审口径不同时可修改</small></label>
-              <label><span>工作日延时加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.weekdayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,weekdayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 150%</small></label>
+              <label><span>工作日延时加班</span><div className="money-input unit-input"><input id="question-overtime-hours" aria-invalid={hasQuestionIssue("question-overtime-hours")} type="number" min="0" step="0.5" value={setup.weekdayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,weekdayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>三类加班至少填写一类；本项按小时工资 × 150%</small></label>
               <label><span>休息日加班尚未补休</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.restDayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,restDayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 200%</small></label>
               <label><span>法定节假日加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.holidayOvertimeHours||""} onChange={e=>setSetup(s=>({...s,holidayOvertimeHours:Number(e.target.value)}))}/><span>小时</span></div><small>按小时工资 × 300%，不能用补休替代</small></label>
               <div className="rights-summary"><div><span>小时工资</span><strong>¥ {money(overtimeBreakdown.hourly)}</strong></div><div><span>工作日</span><strong>¥ {money(overtimeBreakdown.weekday)}</strong></div><div><span>休息日</span><strong>¥ {money(overtimeBreakdown.restDay)}</strong></div><div><span>法定节假日</span><strong>¥ {money(overtimeBreakdown.holiday)}</strong></div></div>
@@ -488,14 +537,14 @@ export default function Home() {
           {compTimeEnabled&&<article className="question-module rights-module">
             <header><b>休</b><div><strong>调休尚未兑现</strong><small>仅计算休息日加班后仍未安排补休的部分</small></div><button className="question-close" type="button" aria-label="关闭调休尚未兑现" onClick={()=>closeClaim("compTime")}>关闭此项</button></header>
             <div className="module-fields rights-fields">
-              <label><span>尚未补休的休息日加班</span><div className="money-input unit-input"><input type="number" min="0" step="0.5" value={setup.outstandingCompTimeDays||""} onChange={e=>setSetup(s=>({...s,outstandingCompTimeDays:Number(e.target.value)}))}/><span>天</span></div><small>按日工资 × 200% 测算</small></label>
+              <label><span>尚未补休的休息日加班</span><div className="money-input unit-input"><input id="question-comp-time-days" aria-invalid={hasQuestionIssue("question-comp-time-days")} type="number" min="0" step="0.5" value={setup.outstandingCompTimeDays||""} onChange={e=>setSetup(s=>({...s,outstandingCompTimeDays:Number(e.target.value)}))}/><span>天</span></div><small>按日工资 × 200% 测算</small></label>
               <label><span>调休折现月工资基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.compTimeWageBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,compTimeWageBase:Number(e.target.value)}))}/></div></label>
               <div className="legal-warning strong-warning">不得与“休息日加班工资”重复填写同一批加班；工作日延时和法定节假日加班也不能用调休替代。</div>
-              {needsRestDayDistinctConfirmation&&<label className="check-line"><input type="checkbox" checked={setup.restDayClaimsDistinct} onChange={e=>setSetup(s=>({...s,restDayClaimsDistinct:e.target.checked}))}/><span>我确认两处填写的<strong>不是同一批休息日加班</strong></span></label>}
+              {needsRestDayDistinctConfirmation&&<label className="check-line"><input id="question-rest-day-distinct" aria-invalid={hasQuestionIssue("question-rest-day-distinct")} type="checkbox" checked={setup.restDayClaimsDistinct} onChange={e=>setSetup(s=>({...s,restDayClaimsDistinct:e.target.checked}))}/><span>我确认两处填写的<strong>不是同一批休息日加班</strong></span></label>}
               <div className="rights-summary compact-summary"><div><span>日工资</span><strong>¥ {money(dailyWage(effectiveCompTimeBase))}</strong></div><div><span>尚未补休</span><strong>{percent(Number(setup.outstandingCompTimeDays||0))} 天</strong></div><div><span>折现金额</span><strong>¥ {money(compTimeTotal)}</strong></div></div>
             </div>
           </article>}
-          {doublePayEnabled&&<article className="question-module"><header><b>2×</b><div><strong>未签订劳动合同或合同到期仍在工作</strong><small>双倍工资只需要合同期满日，统计截止日已在第一步填写</small></div></header><div className="module-fields"><label><span>合同上写的最后一天</span><input type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/><small>也就是劳动合同期满日；不需要填写合同开始日</small></label></div></article>}
+          {doublePayEnabled&&<article className="question-module"><header><b>2×</b><div><strong>未签订劳动合同或合同到期仍在工作</strong><small>双倍工资只需要合同期满日，统计截止日已在第一步填写</small></div></header><div className="module-fields"><label><span>合同上写的最后一天</span><input id="question-contract-end" aria-invalid={hasQuestionIssue("question-contract-end")} type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/><small>也就是劳动合同期满日；不需要填写合同开始日</small></label></div></article>}
           {terminationEnabled&&<article className="question-module termination-module">
             <header><b>N</b><div><strong>离职经济补偿</strong><small>系统按本单位工龄自动计算 N，两种情形只会计入其中一种</small></div></header>
             <div className="termination-kind" role="group" aria-label="离职经济补偿情形">
@@ -538,11 +587,11 @@ export default function Home() {
             <header><b>社</b><div><strong>社保公司部分</strong><small>填写公司实际申报基数，系统按五险费率自动算出实缴和漏缴</small></div></header>
             <div className="has-paid"><span>公司实际缴纳过社保吗？</span><button className={!setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:false,socialPaid:0,socialActualBase:0,socialPaidEndMonth:""}))}>没有</button><button className={setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:true}))}>缴纳过</button></div>
             <div className="module-fields">
-              <label><span>公司实际申报缴费基数</span><div className="money-input"><i>¥</i><input type="number" min="0" disabled={!setup.socialHasPaid} value={setup.socialActualBase||""} placeholder={setup.socialHasPaid?"例如 4,986":"未缴为 0"} onChange={e=>setSetup(s=>({...s,socialActualBase:Number(e.target.value)}))}/></div><small>可在社保缴费记录中查看“缴费工资”或“申报基数”</small></label>
-              {setup.socialHasPaid&&<><label><span>最后缴到哪个月？</span><input type="month" value={setup.socialPaidEndMonth} onChange={e=>setSetup(s=>({...s,socialPaidEndMonth:e.target.value}))}/></label><label className="inferred"><span>从哪个月开始缴？ <em>系统推定</em></span><input type="month" value={effectiveSocialStart} onChange={e=>setSetup(s=>({...s,socialPaidStartMonth:e.target.value}))}/><small>根据入职月份推定，可修改</small></label></>}
+              <label><span>公司实际申报缴费基数</span><div className="money-input"><i>¥</i><input id="question-social-base" aria-invalid={hasQuestionIssue("question-social-base")} type="number" min="0" disabled={!setup.socialHasPaid} value={setup.socialActualBase||""} placeholder={setup.socialHasPaid?"例如 4,986":"未缴为 0"} onChange={e=>setSetup(s=>({...s,socialActualBase:Number(e.target.value)}))}/></div><small>可在社保缴费记录中查看“缴费工资”或“申报基数”</small></label>
+              {setup.socialHasPaid&&<><label><span>最后缴到哪个月？</span><input id="question-social-end" aria-invalid={hasQuestionIssue("question-social-end")} type="month" value={setup.socialPaidEndMonth} onChange={e=>setSetup(s=>({...s,socialPaidEndMonth:e.target.value}))}/></label><label className="inferred"><span>从哪个月开始缴？ <em>系统推定</em></span><input id="question-social-start" aria-invalid={hasQuestionIssue("question-social-start")} type="month" value={effectiveSocialStart} onChange={e=>setSetup(s=>({...s,socialPaidStartMonth:e.target.value}))}/><small>根据入职月份推定，可修改</small></label></>}
               <div className="social-rates"><div className="social-rates-head"><span>五险公司费率（均可修改）</span><strong>合计 {percent(effectiveSocialRate)}%</strong></div><div className="social-rate-grid">{([
                 ["养老保险","socialPensionRate"],["失业保险","socialUnemploymentRate"],["工伤保险","socialInjuryRate"],["生育保险","socialMaternityRate"],["医疗保险","socialMedicalRate"],
-              ] as const).map(([label,key])=><label key={key}><span>{label}</span><div className="money-input compact"><i>%</i><input aria-label={`${label}公司费率`} type="number" min="0" max="100" step="0.1" value={setup[key] ?? ""} onChange={e=>setSetup(s=>({...s,[key]:Number(e.target.value)}))}/></div></label>)}</div><div className="rate-guide social-guide"><b>默认参考比例</b><span>各地、年度和行业费率可能不同；医疗与生育合并征收的地区请按当地口径填写，避免重复计算。</span></div></div>
+              ] as const).map(([label,key],index)=><label key={key}><span>{label}</span><div className="money-input compact"><i>%</i><input id={index===0?"question-social-rate":undefined} aria-invalid={index===0&&hasQuestionIssue("question-social-rate")} aria-label={`${label}公司费率`} type="number" min="0" max="100" step="0.1" value={setup[key] ?? ""} onChange={e=>setSetup(s=>({...s,[key]:Number(e.target.value)}))}/></div></label>)}</div><div className="rate-guide social-guide"><b>默认参考比例</b><span>各地、年度和行业费率可能不同；医疗与生育合并征收的地区请按当地口径填写，避免重复计算。</span></div></div>
               <div className="rate-formula social-formula"><div><small>公司实际缴纳 = 实际申报基数 × 五险公司费率合计</small><strong>¥ {money(setupSocialActualMonthly)}</strong><span>¥ {money(effectiveSocialActualBase)} × {percent(effectiveSocialRate)}%</span></div><i>对比</i><div><small>应缴金额 = 应缴测算基数 × 五险公司费率合计</small><strong>¥ {money(setupSocialExpectedMonthly)}</strong><span>¥ {money(effectiveSocialBase)} × {percent(effectiveSocialRate)}%</span></div><i>差额</i><div className="applied"><small>每月少缴</small><strong>¥ {money(setupSocialMonthly.gap)}</strong><span>{setup.socialHasPaid?"已自动抵扣实际缴纳":"未缴月份按全额计算"}</span></div></div>
             </div>
             <details className="advanced-base"><summary>修改应缴测算基数</summary><label className="inferred"><span>依法应缴测算基数 <em>{setup.socialBase?"已修改":"合同月薪"}</em></span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,socialBase:Number(e.target.value)}))}/></div><small>默认以合同月薪测算公司本应申报的基数；可按当地上下限或经办机构核定结果修改</small></label></details>
@@ -551,9 +600,9 @@ export default function Home() {
             <header><b>积</b><div><strong>公积金公司部分</strong><small>只填实际金额，系统自动反推比例并按最低比例兜底</small></div></header>
             <div className="has-paid"><span>公司实际缴纳过公积金吗？</span><button className={!setup.fundHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,fundHasPaid:false,fundPaid:0,fundPaidEndMonth:""}))}>没有</button><button className={setup.fundHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,fundHasPaid:true}))}>缴纳过</button></div>
             <div className="module-fields">
-              <label><span>公司实际每月缴纳金额</span><div className="money-input"><i>¥</i><input type="number" min="0" disabled={!setup.fundHasPaid} value={setup.fundPaid||""} placeholder={setup.fundHasPaid?"填写单位缴存金额":"未缴为 0"} onChange={e=>setSetup(s=>({...s,fundPaid:Number(e.target.value)}))}/></div><small>只填单位部分，不含个人缴存</small></label>
-              {setup.fundHasPaid&&<><label><span>最后缴到哪个月？</span><input type="month" value={setup.fundPaidEndMonth} onChange={e=>setSetup(s=>({...s,fundPaidEndMonth:e.target.value}))}/></label><label className="inferred"><span>从哪个月开始缴？ <em>系统推定</em></span><input type="month" value={effectiveFundStart} onChange={e=>setSetup(s=>({...s,fundPaidStartMonth:e.target.value}))}/><small>根据入职月份推定，可修改</small></label></>}
-              <label className="rate-field"><span>当地最低单位比例（可修改）</span><div className="rate-presets">{[5,7,10,12].map(rate=><button key={rate} className={setup.fundRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,fundRate:rate}))}>{rate}%</button>)}</div><div className="money-input compact"><i>%</i><input type="number" min="0.01" max="100" step="0.1" value={setup.fundRate||""} onChange={e=>setSetup(s=>({...s,fundRate:Number(e.target.value)}))}/></div><div className="rate-guide"><b>单位缴存比例法定范围 5%–12%（普通情形）</b><span>默认最低 5%；如当地现行规则或获批情形不同，可手工修改。</span></div></label>
+              <label><span>公司实际每月缴纳金额</span><div className="money-input"><i>¥</i><input id="question-fund-paid" aria-invalid={hasQuestionIssue("question-fund-paid")} type="number" min="0" disabled={!setup.fundHasPaid} value={setup.fundPaid||""} placeholder={setup.fundHasPaid?"填写单位缴存金额":"未缴为 0"} onChange={e=>setSetup(s=>({...s,fundPaid:Number(e.target.value)}))}/></div><small>只填单位部分，不含个人缴存</small></label>
+              {setup.fundHasPaid&&<><label><span>最后缴到哪个月？</span><input id="question-fund-end" aria-invalid={hasQuestionIssue("question-fund-end")} type="month" value={setup.fundPaidEndMonth} onChange={e=>setSetup(s=>({...s,fundPaidEndMonth:e.target.value}))}/></label><label className="inferred"><span>从哪个月开始缴？ <em>系统推定</em></span><input id="question-fund-start" aria-invalid={hasQuestionIssue("question-fund-start")} type="month" value={effectiveFundStart} onChange={e=>setSetup(s=>({...s,fundPaidStartMonth:e.target.value}))}/><small>根据入职月份推定，可修改</small></label></>}
+              <label className="rate-field"><span>当地最低单位比例（可修改）</span><div className="rate-presets">{[5,7,10,12].map(rate=><button key={rate} className={setup.fundRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,fundRate:rate}))}>{rate}%</button>)}</div><div className="money-input compact"><i>%</i><input id="question-fund-rate" aria-invalid={hasQuestionIssue("question-fund-rate")} type="number" min="0.01" max="100" step="0.1" value={setup.fundRate||""} onChange={e=>setSetup(s=>({...s,fundRate:Number(e.target.value)}))}/></div><div className="rate-guide"><b>单位缴存比例法定范围 5%–12%（普通情形）</b><span>默认最低 5%；如当地现行规则或获批情形不同，可手工修改。</span></div></label>
               <div className="rate-formula"><div><small>实际缴纳金额 ÷ 测算基数</small><strong>{percent(inferredFundPaidRate)}%</strong><span>反推实缴比例</span></div><i>与</i><div><small>当地最低比例</small><strong>{percent(Number(setup.fundRate||5))}%</strong><span>可手工修改</span></div><i>取高</i><div className="applied"><small>系统采用比例</small><strong>{percent(effectiveFundRate)}%</strong><span>{effectiveFundRate>inferredFundPaidRate?"已按最低比例兜底":"按实缴比例计算"}</span></div></div>
             </div>
             <details className="advanced-base"><summary>修改测算基数</summary><label className="inferred"><span>公积金测算基数 <em>{setup.fundBase?"已修改":"合同月薪"}</em></span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.fundBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,fundBase:Number(e.target.value)}))}/></div><small>未填写公司缴纳基数时，一律以合同月薪作为缺省测算基数；可在此修改，最终以缴存地核定为准</small></label></details>
@@ -561,13 +610,17 @@ export default function Home() {
           {reimbursementEnabled&&<article className="question-module reimbursement-module">
             <header><b>报</b><div><strong>报销费用未支付</strong><small>填写公司尚未支付的报销金额，可选择是否进入本次合计</small></div></header>
             <div className="module-fields reimbursement-fields">
-              <label><span>尚未支付的报销金额</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.reimbursementAmount||""} placeholder="例如 3,680" onChange={e=>setSetup(s=>({...s,reimbursementAmount:Number(e.target.value)}))}/></div><small>填写你已经垫付、但公司尚未支付的金额</small></label>
+              <label><span>尚未支付的报销金额</span><div className="money-input"><i>¥</i><input id="question-reimbursement-amount" aria-invalid={hasQuestionIssue("question-reimbursement-amount")} type="number" min="0" value={setup.reimbursementAmount||""} placeholder="例如 3,680" onChange={e=>setSetup(s=>({...s,reimbursementAmount:Number(e.target.value)}))}/></div><small>填写你已经垫付、但公司尚未支付的金额</small></label>
               <label><span>报销事项说明（可选）</span><input value={setup.reimbursementNote} placeholder="例如：差旅、交通及客户招待费" onChange={e=>setSetup(s=>({...s,reimbursementNote:e.target.value}))}/><small>将显示在导出的测算报告中</small></label>
               <div className="reimbursement-policy" role="group" aria-label="报销金额计入口径"><span>这笔报销如何处理？</span><button className={setup.reimbursementIncluded?"active":""} aria-pressed={setup.reimbursementIncluded} onClick={()=>setSetup(s=>({...s,reimbursementIncluded:true}))}>计入本次合计</button><button className={!setup.reimbursementIncluded?"active":""} aria-pressed={!setup.reimbursementIncluded} onClick={()=>setSetup(s=>({...s,reimbursementIncluded:false}))}>仅在报告中记录</button></div>
             </div>
           </article>}
         </div>
-        <div className="guided-actions"><button className="back" onClick={()=>setFlowStep("scenario")}>← 返回</button><button className="next" disabled={!questionsReady} onClick={()=>setFlowStep("review")}>下一步：核对推定 →</button></div>
+        {questionIssues.length>0&&<section className="question-validation" aria-labelledby="question-validation-title" aria-live="polite">
+          <div className="question-validation-head"><span>{String(questionIssues.length).padStart(2,"0")}</span><div><h3 id="question-validation-title">还有 {questionIssues.length} 项需要处理</h3><small>点击任一问题，系统会直接定位并聚焦到对应输入框。</small></div></div>
+          <ul>{questionIssues.map((issue,index)=><li key={issue.id}><button type="button" data-testid={`question-issue-${issue.id}`} onClick={()=>jumpToQuestionIssue(issue.targetId)}><b>{String(index+1).padStart(2,"0")}</b><span>{issue.message}</span><i>去处理 →</i></button></li>)}</ul>
+        </section>}
+        <div className="guided-actions"><button className="back" onClick={()=>setFlowStep("scenario")}>← 返回</button><button type="button" className={`next${questionsReady?"":" needs-attention"}`} onClick={continueToReview}>{questionsReady?"下一步：核对推定 →":`检查 ${questionIssues.length} 项后继续 →`}</button></div>
       </div>}
 
       {flowStep==="review"&&<div className="guided-step review-step">

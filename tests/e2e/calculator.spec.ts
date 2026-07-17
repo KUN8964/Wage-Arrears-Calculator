@@ -77,6 +77,39 @@ test("lets the user close an accidentally selected optional claim and continue",
   await expect(page.getByText("未休年假折现", { exact:true })).toHaveCount(0);
 });
 
+test("explains missing or conflicting answers and jumps directly to the field", async ({ page }) => {
+  await page.getByLabel("入职日期", { exact:false }).fill("2026-01-01");
+  await page.getByLabel("统计截止日期", { exact:false }).fill("2026-03-31");
+  await page.getByLabel("合同月薪", { exact:false }).fill("20000");
+  await page.getByRole("button", { name:"下一步：选择事项 →" }).click();
+
+  await page.getByRole("button", { name:/工资少发或未发/ }).click();
+  await page.getByRole("button", { name:/未签订劳动合同或合同到期仍在工作/ }).click();
+  await page.getByRole("button", { name:"下一步：回答问题 →" }).click();
+
+  await expect(page.getByRole("heading", { name:"还有 2 项需要处理" })).toBeVisible();
+  const continueButton=page.getByRole("button", { name:"检查 2 项后继续 →" });
+  await expect(continueButton).toBeEnabled();
+  await page.getByTestId("question-issue-wage-start").click();
+  await expect(page.locator("#question-wage-start")).toBeFocused();
+  await expect(page.locator("#question-wage-start")).toHaveAttribute("aria-invalid","true");
+
+  await page.locator("#question-wage-start").fill("2025-12");
+  await expect(page.getByText("开始欠薪月份必须位于入职月份和统计截止月份之间。", { exact:true })).toBeVisible();
+  await page.locator("#question-wage-start").fill("2026-02");
+  await expect(page.getByRole("heading", { name:"还有 1 项需要处理" })).toBeVisible();
+
+  await page.locator("#question-contract-end").fill("2025-12-31");
+  await expect(page.getByText("合同期满日不能早于入职日期。", { exact:true })).toBeVisible();
+  await page.getByTestId("question-issue-contract-end").click();
+  await expect(page.locator("#question-contract-end")).toBeFocused();
+  await page.locator("#question-contract-end").fill("2026-02-28");
+
+  await expect(page.getByText(/项需要处理/)).toHaveCount(0);
+  await page.getByRole("button", { name:"下一步：核对推定 →" }).click();
+  await expect(page.getByText("核对事实与系统推定", { exact:true })).toBeVisible();
+});
+
 test("rejects an imported backup containing an impossible date without changing the page", async ({ page }) => {
   const invalidBackup = {
     version:9,
