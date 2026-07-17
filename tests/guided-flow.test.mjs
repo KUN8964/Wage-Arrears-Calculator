@@ -34,7 +34,7 @@ test("adds reimbursement as an optional claim with an explicit total policy", as
   assert.match(page, /计入本次合计/);
   assert.match(page, /仅在报告中记录/);
   assert.match(page, /reimbursementEnabled&&setup\.reimbursementIncluded/);
-  assert.match(page, /version:10/);
+  assert.match(page, /version:11/);
 });
 
 test("adds annual leave, overtime and uncompensated rest-day leave to the guided total and report", async () => {
@@ -50,7 +50,7 @@ test("adds annual leave, overtime and uncompensated rest-day leave to the guided
   assert.match(page, /annualLeaveTotal/);
   assert.match(page, /overtimeTotal/);
   assert.match(page, /compTimeTotal/);
-  assert.match(page, /version:10/);
+  assert.match(page, /version:11/);
 });
 
 test("lets users close optional rights modules without clearing their draft values", async () => {
@@ -91,6 +91,8 @@ test("adds mutually exclusive N and N plus X termination compensation", async ()
   assert.match(page, /terminationAdditionalMonths/);
   assert.match(page, /是否已经发送依据第 38 条解除劳动合同的通知/);
   assert.match(page, /是否保留通知送达证明/);
+  assert.match(page, /是否已经提交“个人原因辞职”或签署离职协议/);
+  assert.match(page, /personalResignationSigned/);
   assert.match(page, /forcedNoticeSent/);
   assert.match(page, /forcedNoticeProof/);
   assert.match(page, /min="0" max="9" step="1"/);
@@ -98,7 +100,7 @@ test("adds mutually exclusive N and N plus X termination compensation", async ()
   assert.match(page, /terminationCompensation/);
   assert.match(page, /terminationTotal/);
   assert.match(page, /离职经济补偿.*money\(terminationTotal\)/s);
-  assert.match(page, /version:10/);
+  assert.match(page, /version:11/);
 });
 
 test("adds a closable work injury screening without adding an estimated award to the total", async () => {
@@ -147,21 +149,36 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   assert.doesNotMatch(reportCss, /border-(?:top|bottom):1px (?:dotted|dashed)/);
 });
 
-test("adds a nationwide rights-enforcement route matrix to the end of the report", async () => {
+test("adds a personalized rights-enforcement plan on screen and in the report", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
+  const planner = await readFile(new URL("../app/rights-route-planner.mjs", import.meta.url), "utf8");
   assert.match(page, /维权路径建议/);
-  assert.match(page, /劳动保障监察投诉/);
-  assert.match(page, /劳动人事争议仲裁/);
-  assert.match(page, /申请支付令/);
-  assert.match(page, /社保与公积金专项处理/);
-  assert.match(page, /委托律师或申请法律援助/);
-  assert.match(page, /住房公积金管理中心/);
+  assert.match(page, /系统已按当前情况自动分流/);
+  assert.match(page, /buildRightsRoutePlan/);
+  assert.match(page, /rightsPlan\.routes\.map/);
+  assert.match(page, /查看本案证据清单/);
+  assert.match(planner, /劳动保障监察/);
+  assert.match(planner, /劳动人事争议仲裁委员会/);
+  assert.match(planner, /支付令/);
+  assert.match(planner, /全国根治欠薪线索反映平台/);
+  assert.match(planner, /拒不支付劳动报酬罪/);
+  assert.match(planner, /住房公积金管理中心/);
+  assert.match(planner, /律师或法律援助机构/);
   assert.match(page, /不改变本报告任何测算金额/);
-  assert.match(page, /一般仲裁时效为 1 年/);
-  assert.match(page, /连续或继续状态自行为终了之日起计算/);
+  assert.match(planner, /一般劳动争议仲裁时效为一年/);
   assert.match(page, /主要全国性依据/);
   assert.match(css, /\.report-rights-plan/);
+  assert.match(theme, /\.action-plan-card/);
+  assert.match(theme, /\.action-route-grid/);
+  assert.match(theme, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(theme, /\.action-route:last-child:nth-child\(odd\)/);
+  assert.match(theme, /counter-reset: action-step/);
+  assert.match(theme, /grid-template-columns: var\(--action-step-number-width\) minmax\(0, 1fr\)/);
+  assert.match(theme, /counter\(action-step, decimal-leading-zero\)/);
+  assert.match(theme, /\.action-route:nth-child\(5n \+ 1\)/);
+  assert.match(theme, /\.action-route:nth-child\(5n \+ 5\)/);
   assert.match(css, /\.report-route-table\{[^}]*table-layout:fixed/);
   assert.match(css, /\.report-rights-plan\{break-inside:auto/);
   assert.match(css, /\.report-route-table tr\{break-inside:avoid/);
@@ -246,6 +263,17 @@ test("does not display already-paid normal wages in the result summary", async (
   assert.match(page, /totals\.normal/);
 });
 
+test("derives the actual wage-arrears period from rows that still contain arrears", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
+  assert.match(page, /const wageArrearsMonths = useMemo/);
+  assert.match(page, /Number\(row\.arrears \|\| 0\) > 0/);
+  assert.match(page, /实际欠薪期间/);
+  assert.match(page, /共 \$\{wageArrearsMonths\.length\} 个欠薪月份/);
+  assert.match(page, /wageArrearsPeriod.*wageArrearsMonths\.length.*个月/s);
+  assert.match(theme, /\.metrics \.wage-period/);
+});
+
 test("limits displayed and exported numeric precision to two decimal places", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /minimumFractionDigits: 2, maximumFractionDigits: 2/);
@@ -292,6 +320,7 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(theme, /\.app-shell small,[\s\S]*font-size: var\(--vd-text-caption\)/);
   assert.match(theme, /\.metric-icon \{[^}]*background: var\(--vd-surface-action\) !important/);
   assert.match(theme, /\.sheet \.row-total,[\s\S]*\.sheet tfoot td \{ white-space: nowrap/);
+  assert.match(theme, /\.sheet thead th \{ top: auto; \}/);
   assert.match(theme, /:focus-visible/);
   assert.match(theme, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(theme, /@media screen and \(max-width: 430px\)/);
@@ -300,6 +329,26 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(reportTheme, /\.report-summary-table thead th \{[\s\S]*background: var\(--report-ink\)/);
   assert.match(reportTheme, /\.report-summary-table tfoot td \{[\s\S]*background: var\(--report-accent\) !important/);
   assert.doesNotMatch(reportTheme, /gradient\(/);
+});
+
+test("defines every editorial design token referenced by application styles", async () => {
+  const styles = await Promise.all([
+    "../app/design-tokens.css",
+    "../app/globals.css",
+    "../app/vandslab-theme.css",
+    "../app/report-theme.css",
+  ].map(path => readFile(new URL(path, import.meta.url), "utf8")));
+  const css = styles.join("\n");
+  const defined = new Set([...css.matchAll(/(--vd-[a-z0-9-]+)\s*:/g)].map(match => match[1]));
+  const referenced = new Set([...css.matchAll(/var\((--vd-[a-z0-9-]+)/g)].map(match => match[1]));
+  assert.deepEqual([...referenced].filter(token => !defined.has(token)).sort(), []);
+});
+
+test("aligns action-card cautions with step body text on desktop and mobile", async () => {
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
+  assert.match(theme, /--action-step-body-inset: calc\(var\(--action-step-number-width\) \+ var\(--action-step-gap\)\)/);
+  assert.match(theme, /\.route-caution \{[^}]*padding: var\(--vd-space-5\) 0 0 var\(--action-step-body-inset\)/);
+  assert.match(theme, /\.action-route:last-child:nth-child\(odd\) > \.route-caution \{[^}]*padding: var\(--vd-space-5\) 0 0 calc\(var\(--vd-space-8\) \+ var\(--action-step-body-inset\)\)/);
 });
 
 test("keeps compound money inputs unobstructed while focused", async () => {

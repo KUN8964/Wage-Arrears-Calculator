@@ -7,6 +7,7 @@ import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionFor
 import { annualLeaveCompensation, compTimeCompensation, currentYearEmploymentDays, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
 import { terminationCompensation } from "./termination-calculator.mjs";
 import { WORK_INJURY_KINDS, workInjuryScreening } from "./work-injury-screening.mjs";
+import { buildRightsRoutePlan } from "./rights-route-planner.mjs";
 
 type Row = {
   id: number;
@@ -35,6 +36,8 @@ type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annua
 type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
 type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
 type Confirmation = "yes" | "no" | "unknown";
+type RightsRoute = { id:string; tone:"primary"|"secondary"|"warning"; badge:string; title:string; suitable:string; description:string; steps:string[]; caution:string };
+type RightsPlan = { headline:string; summary:string; routes:RightsRoute[]; evidence:string[]; activeMoneyClaims:string[]; socialGapKind:"none"|"underpaid"|"unpaid" };
 type QuickSetup = {
   employmentDate: string; cutoffDate: string; contractStart: string; contractEnd: string; contractPay: number;
   arrearsStartMonth: string; firstArrearsPaidRate: number;
@@ -46,7 +49,7 @@ type QuickSetup = {
   overtimeWageBase: number; weekdayOvertimeHours: number; restDayOvertimeHours: number; holidayOvertimeHours: number;
   compTimeWageBase: number; outstandingCompTimeDays: number; restDayClaimsDistinct: boolean;
   terminationType: "forced" | "layoff"; terminationAveragePay: number; terminationAdditionalMonths: number; terminationExtraPayBase: number; terminationLocalAveragePay: number;
-  forcedNoticeSent: Confirmation; forcedNoticeProof: Confirmation;
+  personalResignationSigned: Confirmation; forcedNoticeSent: Confirmation; forcedNoticeProof: Confirmation;
   workInjuryKind: keyof typeof WORK_INJURY_KINDS; workInjuryDate: string; workInjuryCommuteResponsibility: "nonPrimary" | "primary" | "pending"; workInjuryEmployerApplied: "yes" | "no" | "unknown";
 };
 type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
@@ -62,7 +65,7 @@ const defaultSetup: QuickSetup = {
   overtimeWageBase: 0, weekdayOvertimeHours: 0, restDayOvertimeHours: 0, holidayOvertimeHours: 0,
   compTimeWageBase: 0, outstandingCompTimeDays: 0, restDayClaimsDistinct: false,
   terminationType:"forced", terminationAveragePay:0, terminationAdditionalMonths:1, terminationExtraPayBase:0, terminationLocalAveragePay:0,
-  forcedNoticeSent:"unknown", forcedNoticeProof:"unknown",
+  personalResignationSigned:"unknown", forcedNoticeSent:"unknown", forcedNoticeProof:"unknown",
   workInjuryKind:"unclear", workInjuryDate:"", workInjuryCommuteResponsibility:"pending", workInjuryEmployerApplied:"unknown",
 };
 const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] = [
@@ -247,6 +250,14 @@ export default function Home() {
     socialActual:a.socialActual+Number(r.socialPaid||0), socialExpected:a.socialExpected+Number(r.socialBase||0)*Number(r.socialRate||0)/100,
     fundActual:a.fundActual+Number(r.fundPaid||0), fundExpected:a.fundExpected+Number(r.fundBase||0)*Number(r.fundRate||0)/100,
   }), {normal:0,paid:0,arrears:0,social:0,fund:0,double:0,socialActual:0,socialExpected:0,fundActual:0,fundExpected:0}), [rows, doubleById]);
+  const wageArrearsMonths = useMemo(() => [...new Set(rows
+    .filter(row => Number(row.arrears || 0) > 0 && /^\d{4}-\d{2}$/.test(row.wageMonth))
+    .map(row => row.wageMonth))].sort(), [rows]);
+  const wageArrearsPeriod = wageArrearsMonths.length
+    ? wageArrearsMonths.length === 1
+      ? wageArrearsMonths[0]
+      : `${wageArrearsMonths[0]} 至 ${wageArrearsMonths[wageArrearsMonths.length - 1]}`
+    : "当前未形成欠薪";
   const reimbursementTotal = reimbursementEnabled&&setup.reimbursementIncluded ? Number(setup.reimbursementAmount||0) : 0;
   const rowClaimTotal = (row: Row) => (wageEnabled ? Number(row.arrears || 0) : 0) + (socialEnabled ? socialDueFor(row) : 0) + (fundEnabled ? fundDueFor(row) : 0) + (doublePayEnabled ? Number(doubleById.get(row.id) || 0) : 0);
   const openRows = rows.filter(r => r.status === "未结清").length;
@@ -294,6 +305,17 @@ export default function Home() {
   const hasCompTimeException=compTimeEnabled&&compTimeTotal>0;
   const hasTerminationException=terminationEnabled&&terminationTotal>0;
   const exceptionCount=exceptionRows.length+(hasReimbursementException?1:0)+(hasAnnualLeaveException?1:0)+(hasOvertimeException?1:0)+(hasCompTimeException?1:0)+(hasTerminationException?1:0);
+  const rightsPlan=buildRightsRoutePlan({
+    wageDue:wageEnabled?totals.arrears:0,
+    socialEnabled,socialDue:socialEnabled?totals.social:0,socialHasPaid:setup.socialHasPaid,
+    fundEnabled,fundDue:fundEnabled?totals.fund:0,fundHasPaid:setup.fundHasPaid,
+    doublePayDue:doublePayEnabled?totals.double:0,
+    reimbursementDue:reimbursementEnabled?Number(setup.reimbursementAmount||0):0,
+    annualLeaveDue:annualLeaveTotal,overtimeDue:overtimeTotal,compTimeDue:compTimeTotal,
+    terminationEnabled,terminationType:setup.terminationType,personalResignationSigned:setup.personalResignationSigned,
+    forcedNoticeSent:setup.forcedNoticeSent,forcedNoticeProof:setup.forcedNoticeProof,
+    workInjuryEnabled,
+  }) as RightsPlan;
   const reportMonth=setup.cutoffDate ? setup.cutoffDate.slice(0,7) : "—";
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
   const toggleClaim=(claim:Claim)=>setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
@@ -316,7 +338,7 @@ export default function Home() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪资计算器明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:10, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
+    const data = JSON.stringify({ version:11, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
   };
   const importData = (file?: File) => {
@@ -484,8 +506,11 @@ export default function Home() {
               <label><span>解除前 12 个月平均应得工资</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationAveragePay||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,terminationAveragePay:Number(e.target.value)}))}/></div><small>包含奖金、津贴和补贴；未满 12 个月按实际月份平均</small></label>
               {setup.terminationType==="layoff"&&<><label><span>额外补偿月数 X</span><div className="money-input unit-input"><input aria-label="额外补偿月数X" type="number" min="0" max="9" step="1" value={setup.terminationAdditionalMonths} onChange={e=>setSetup(s=>({...s,terminationAdditionalMonths:Math.min(9,Math.max(0,Math.trunc(Number(e.target.value)||0)))}))}/><span>个月</span></div><small>默认 1，可按通知、协议或实际主张改为 0–9 的整数</small></label><label><span>X 部分每月工资基数</span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.terminationExtraPayBase||""} placeholder={`默认 ${effectiveTerminationAveragePay}`} onChange={e=>setSetup(s=>({...s,terminationExtraPayBase:Number(e.target.value)}))}/></div><small>法定代通知金通常按上一个月工资；协议额外补偿按约定填写</small></label></>}
               {setup.terminationType==="forced"&&<div className="termination-confirmations">
+                <div className="termination-verification-head"><div><span>解除通知核验</span><strong>三个关键状态</strong></div><small>只需选择，不需要描述事情经过</small></div>
+                <fieldset><legend>是否已经提交“个人原因辞职”或签署离职协议？</legend><div>{([['yes','已经提交'],['no','没有提交'],['unknown','不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.personalResignationSigned===key?"active":""} aria-pressed={setup.personalResignationSigned===key} onClick={()=>setSetup(s=>({...s,personalResignationSigned:key}))}>{label}</button>)}</div><small>普通辞职文件可能与依据第 38 条被迫解除的主张冲突。</small></fieldset>
                 <fieldset><legend>是否已经发送依据第 38 条解除劳动合同的通知？</legend><div>{([['yes','已发送'],['no','未发送'],['unknown','不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.forcedNoticeSent===key?"active":""} aria-pressed={setup.forcedNoticeSent===key} onClick={()=>setSetup(s=>({...s,forcedNoticeSent:key,forcedNoticeProof:key==="yes"?s.forcedNoticeProof:"unknown"}))}>{label}</button>)}</div><small>这里只确认通知状态，不要求填写经过。</small></fieldset>
                 {setup.forcedNoticeSent==="yes"&&<fieldset><legend>是否保留通知送达证明？</legend><div>{([['yes','已保留'],['no','未保留'],['unknown','不清楚']] as const).map(([key,label])=><button type="button" key={key} className={setup.forcedNoticeProof===key?"active":""} aria-pressed={setup.forcedNoticeProof===key} onClick={()=>setSetup(s=>({...s,forcedNoticeProof:key}))}>{label}</button>)}</div><small>例如 EMS 回执、邮件记录、微信或钉钉送达记录。</small></fieldset>}
+                {setup.personalResignationSigned==="yes"&&<p className="termination-status danger"><b>文件可能冲突：</b>不要直接再次发送相互矛盾的解除文件，建议先由律师或法律援助机构复核现有文件。</p>}
                 {setup.forcedNoticeSent==="no"&&<p className="termination-status warning"><b>程序尚未完成：</b>当前只测算 N，发送解除通知前建议先固定欠薪、社保及劳动关系证据。</p>}
                 {setup.forcedNoticeSent==="unknown"&&<p className="termination-status"><b>需要确认：</b>无法确认通知状态时，报告将把被迫离职补偿标记为待核验。</p>}
                 {setup.forcedNoticeSent==="yes"&&setup.forcedNoticeProof!=="yes"&&<p className="termination-status warning"><b>送达证据待补充：</b>已填写发送通知，但尚未确认保留送达证明。</p>}
@@ -557,7 +582,7 @@ export default function Home() {
 
     {flowStep === "results" && <>
     <section className="metrics guided-metrics" aria-label="测算汇总">
-      {wageEnabled&&<article><span className="metric-icon wage">工</span><div><small>欠薪合计</small><strong>¥ {money(totals.arrears)}</strong><p>占总欠款 {percent(grandTotal ? totals.arrears / grandTotal * 100 : 0)}%</p></div></article>}
+      {wageEnabled&&<article><span className="metric-icon wage">工</span><div><small>欠薪合计</small><strong>¥ {money(totals.arrears)}</strong><p className="wage-period"><span><b>实际欠薪期间</b><time>{wageArrearsPeriod}</time></span><span>{wageArrearsMonths.length ? `共 ${wageArrearsMonths.length} 个欠薪月份` : "以最终逐月明细为准"}<br/>占总欠款 {percent(grandTotal ? totals.arrears / grandTotal * 100 : 0)}%</span></p></div></article>}
       {socialEnabled&&<article><span className="metric-icon social">社</span><div><small>社保公司尚欠补缴</small><strong>¥ {money(totals.social)}</strong><p>实缴 {socialPaidMonths} 个月 · 尚欠 {socialMonths} 个月<br/>已缴 ¥ {money(totals.socialActual)} · 应缴 ¥ {money(totals.socialExpected)}</p></div></article>}
       {fundEnabled&&<article><span className="metric-icon fund">积</span><div><small>公积金公司尚欠补缴</small><strong>¥ {money(totals.fund)}</strong><p>实缴 {fundPaidMonths} 个月 · 尚欠 {fundMonths} 个月<br/>已缴 ¥ {money(totals.fundActual)} · 应缴 ¥ {money(totals.fundExpected)}</p></div></article>}
       {doublePayEnabled&&<article><span className="metric-icon double">2×</span><div><small>未续签双倍工资差额</small><strong>¥ {money(totals.double)}</strong><p>{effectiveDoubleRule.enabled ? "已自动启用 · 最多支持 11 个月" : "尚未满足超期 1 个月"}</p></div></article>}
@@ -589,6 +614,18 @@ export default function Home() {
         {hasCompTimeException&&<div className="exception-row"><b>调休未兑现</b><span><i>未补休</i></span><strong>¥ {money(compTimeTotal)}</strong></div>}
         {hasTerminationException&&<div className="exception-row"><b>离职经济补偿</b><span><i>{setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}</i></span><strong>¥ {money(terminationTotal)}</strong></div>}
         {hasReimbursementException&&<div className="exception-row reimbursement-exception"><b>报销费用</b><span><i>报销</i><em>{setup.reimbursementIncluded?"计入合计":"仅记录"}</em></span><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong></div>}</div> : <p className="empty-exceptions">当前条件下没有测算出欠款，请返回检查填写内容。</p>}
+    </section>
+
+    <section className="action-plan-card" aria-label="根据测算生成的下一步行动方案">
+      <header className="action-plan-head"><div><p className="eyebrow">NEXT ACTION / 下一步行动</p><h2>系统已按当前情况自动分流</h2></div><span>无需重复描述经过</span></header>
+      <div className="action-plan-lead"><small>当前建议</small><strong>{rightsPlan.headline}</strong><p>{rightsPlan.summary}</p></div>
+      <div className="action-route-grid">{rightsPlan.routes.map((route,index)=><article key={route.id} className={`action-route ${route.tone}`}>
+        <div><span>{String(index+1).padStart(2,"0")}</span><b>{route.badge}</b></div>
+        <small>{route.suitable}</small><h3>{route.title}</h3><p>{route.description}</p>
+        <ol>{route.steps.map((step:string)=><li key={step}>{step}</li>)}</ol>
+        <p className="route-caution">{route.caution}</p>
+      </article>)}</div>
+      <details className="evidence-plan"><summary>查看本案证据清单 <span>{rightsPlan.evidence.length} 项</span></summary><ul>{rightsPlan.evidence.map((item:string)=><li key={item}>{item}</li>)}</ul><p>尽量保存官方PDF、盖章明细及聊天、邮件、录音的原始文件，不只保留裁剪后的截图。</p></details>
     </section>
 
     <section className="precision-card">
@@ -640,7 +677,7 @@ export default function Home() {
           <table className="report-summary-table">
             <thead><tr><th>项目</th><th>计算口径</th><th>金额（人民币）</th></tr></thead>
             <tbody>
-              {wageEnabled&&<tr><td>欠薪合计</td><td>{setup.arrearsStartMonth||"—"} 起</td><td>¥ {money(totals.arrears)}</td></tr>}
+              {wageEnabled&&<tr><td>欠薪合计</td><td>{wageArrearsMonths.length?`${wageArrearsPeriod}（${wageArrearsMonths.length}个月）`:"当前未形成欠薪"}</td><td>¥ {money(totals.arrears)}</td></tr>}
               {socialEnabled&&<tr><td>社保公司尚欠补缴</td><td>五险公司承担部分</td><td>¥ {money(totals.social)}</td></tr>}
               {fundEnabled&&<tr><td>公积金公司尚欠补缴</td><td>单位缴存部分</td><td>¥ {money(totals.fund)}</td></tr>}
               {doublePayEnabled&&<tr><td>未续签双倍工资差额</td><td>满足条件后最多 11 个月</td><td>¥ {money(totals.double)}</td></tr>}
@@ -684,25 +721,19 @@ export default function Home() {
         <section className="report-section report-rights-plan">
           <header><span className="report-section-index">{workInjuryEnabled?"06":"05"}</span><div><h2>维权路径建议</h2><p>全国通用程序框架，具体受理窗口以所在地公开办事指南为准</p></div></header>
           <div className="report-route-intro">
-            <span>本报告当前涉及</span>
-            <strong>{claimOptions.filter(item=>selectedClaims.includes(item.key)).map(item=>item.title).join("、")||"尚未选择测算事项"}</strong>
-            <p>以下内容不改变本报告任何测算金额。先固定原始证据，再根据争议类型选择行政投诉、劳动仲裁、支付令或专业法律服务；同一事项已经进入仲裁或诉讼后，行政机关可能告知按相应争议程序办理。</p>
+            <span>根据本次填报自动生成</span>
+            <strong>{rightsPlan.headline}</strong>
+            <p>{rightsPlan.summary} 以下内容不改变本报告任何测算金额，也不替代主管机关核定、仲裁裁决或个案法律意见。</p>
           </div>
           <table className="report-route-table">
-            <thead><tr><th>路径</th><th>适合处理</th><th>行动与程序边界</th></tr></thead>
-            <tbody>
-              <tr><td><b>劳动保障监察投诉</b><small>行政投诉 / 受理立案</small></td><td>单位明确、违法事实较清楚的欠薪、工时等事项</td><td>向有管辖权的人社行政部门或劳动保障监察机构提交投诉。各地机构名称不同，常被称为“劳动监察大队”。原则上关注违法行为发生之日起 2 年；连续或继续状态自行为终了之日起计算。解除性质、赔偿资格等争议可能转劳动争议程序。</td></tr>
-              <tr><td><b>劳动人事争议仲裁</b><small>争议金额与责任认定</small></td><td>欠薪、双倍工资、年假或加班工资、经济补偿及其他劳动争议</td><td>向有管辖权的劳动人事争议仲裁委员会提出明确请求，并提交事实与证据。一般仲裁时效为 1 年；劳动关系存续期间的欠薪争议不受该 1 年限制，但劳动关系终止后应在 1 年内提出。</td></tr>
-              <tr><td><b>申请支付令</b><small>基层人民法院督促程序</small></td><td>已经到期、金额明确、债权债务关系清楚且能够送达单位的劳动报酬</td><td>可依法向有管辖权的基层人民法院申请。单位提出成立的书面异议后，支付令失效；属于劳动争议的，通常仍应先行仲裁。支付令不是替代争议审理的通用捷径。</td></tr>
-              <tr><td><b>社保与公积金专项处理</b><small>行政核查 / 责令补缴</small></td><td>未参保、少缴社会保险费，或未缴、少缴住房公积金</td><td>社保事项向当地社保费征收机构及人社、医保、税务部门按公开职责分工反映；公积金事项向住房公积金管理中心申请核查和责令补缴。各地征收与受理分工不同，不宜仅依赖劳动仲裁解决。</td></tr>
-              <tr><td><b>委托律师或申请法律援助</b><small>专业代理 / 公共法律服务</small></td><td>解除性质争议、金额较大、证据由单位控制、多主体或复杂工伤案件</td><td>仲裁并不强制委托律师。需要代理时，应明确委托阶段、权限和收费；符合条件的，可向当地法律援助机构申请，资格审查、证明材料和服务范围以当地实施规则为准。</td></tr>
-            </tbody>
+            <thead><tr><th>建议路径</th><th>当前适用原因</th><th>行动与程序边界</th></tr></thead>
+            <tbody>{rightsPlan.routes.map(route=><tr key={route.id}><td><b>{route.title}</b><small>{route.badge}</small></td><td>{route.suitable}</td><td>{route.description} 建议步骤：{route.steps.join("；")}。{route.caution}</td></tr>)}</tbody>
           </table>
           <div className="report-action-order">
             <span>建议顺序</span>
-            <ol><li><b>固定证据</b> 保存劳动合同、工资流水与工资条、考勤、社保和公积金记录、解除通知及沟通原件；工伤事项另保存病历、诊断、事故和交通责任材料。</li><li><b>列明请求</b> 按项目写清期间、计算式、金额和证据来源；书面催告并保留送达记录，可用于证明曾主张权利。</li><li><b>选择程序</b> 明确行政违法可先投诉；金额或责任存在争议通常走仲裁；债务清楚可评估支付令；复杂案件尽早咨询律师或法律援助机构。</li></ol>
+            <ol><li><b>固定证据</b> {rightsPlan.evidence.join("；")}。</li><li><b>书面留痕</b> 催告不是全国统一法定前置程序，但可用于固定主张、单位答复和送达事实；不要填写与实际解除理由冲突的普通辞职文件。</li><li><b>按路径办理</b> 补缴请求与劳动报酬、解除补偿争议分别进入对应程序；各地受理部门和材料要求以公开办事指南为准。</li></ol>
           </div>
-          <p className="report-route-basis">主要全国性依据：《劳动保障监察条例》《劳动争议调解仲裁法》《劳动合同法》《民事诉讼法》《社会保险法》《住房公积金管理条例》《法律援助法》。本节为程序导航，不替代受理机关的管辖判断或个案法律意见。</p>
+          <p className="report-route-basis">主要全国性依据：《劳动保障监察条例》《劳动争议调解仲裁法》《劳动合同法》《社会保险法》《住房公积金管理条例》《工伤保险条例》《民事诉讼法》《刑法》《法律援助法》、拒不支付劳动报酬刑事案件司法解释及最高人民法院劳动争议司法解释（二）。本节为程序导航，不替代受理机关的管辖判断、刑事立案判断或个案法律意见。</p>
         </section>
 
         <p className="report-disclaimer">重要说明：本报告仅作为测算底稿，不构成法律意见、工伤认定或缴费核定结论。离职原因、解除程序、经济补偿资格、工伤认定、年假资格、加班工资基数、工时制度、仲裁时效及最终金额，均以有效证据、当地裁审口径、参保地现行政策及法定程序认定为准。</p>

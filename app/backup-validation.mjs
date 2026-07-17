@@ -1,6 +1,6 @@
 import { isIsoDate, isIsoMonth } from "./date-utils.mjs";
 
-export const CURRENT_BACKUP_VERSION = 10;
+export const CURRENT_BACKUP_VERSION = 11;
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 export const MAX_BACKUP_ROWS = 60;
 
@@ -26,6 +26,7 @@ const SETUP_BOOLEAN_FIELDS = ["socialHasPaid", "fundHasPaid", "reimbursementIncl
 const SETUP_TEXT_LIMITS = { reimbursementNote:500 };
 const SETUP_ENUMS = {
   terminationType:new Set(["forced", "layoff"]),
+  personalResignationSigned:new Set(["yes", "no", "unknown"]),
   forcedNoticeSent:new Set(["yes", "no", "unknown"]),
   forcedNoticeProof:new Set(["yes", "no", "unknown"]),
   workInjuryKind:new Set(["work", "commute", "businessTrip", "occupationalDisease", "suddenDeath", "unclear"]),

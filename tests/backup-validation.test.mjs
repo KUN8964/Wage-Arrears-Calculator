@@ -52,11 +52,15 @@ test("rejects impossible dates, negative amounts and unknown claims", () => {
   const unknownClaim = validBackup();
   unknownClaim.selectedClaims.push("unknown");
   assert.throws(() => validateBackupPayload(unknownClaim), BackupValidationError);
+
+  const invalidResignation = validBackup();
+  invalidResignation.setup.personalResignationSigned = "maybe";
+  assert.throws(() => validateBackupPayload(invalidResignation), BackupValidationError);
 });
 
 test("rejects unsupported versions, excessive rows and oversized files", () => {
   const future = validBackup();
-  future.version = 11;
+  future.version = 12;
   assert.throws(() => validateBackupPayload(future), BackupValidationError);
 
   const excessive = validBackup();
