@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1] || "Wage-Arrears-Calculator";
 const basePath = process.env.GITHUB_PAGES === "true" ? `/${repositoryName}` : "";
+const webServerCommand = process.env.CI
+  ? "npm run build && npm run start -- --host 0.0.0.0 --port 3100"
+  : "npm run dev -- --host 0.0.0.0 --port 3100";
 
 export default defineConfig({
   testDir:"./tests/e2e",
@@ -20,7 +23,7 @@ export default defineConfig({
     use:{...devices["Desktop Chrome"]},
   }],
   webServer:{
-    command:"npm run dev -- --host 0.0.0.0 --port 3100",
+    command:webServerCommand,
     url:`http://127.0.0.1:3100${basePath}/`,
     reuseExistingServer:!process.env.CI,
     timeout:120_000,

@@ -6,6 +6,7 @@ test("provides a GitHub Pages static deployment workflow", async () => {
   const workflow = await readFile(new URL("../.github/workflows/deploy-pages.yml", import.meta.url), "utf8");
   const config = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const playwright = await readFile(new URL("../playwright.config.ts", import.meta.url), "utf8");
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
   assert.equal(pkg.scripts["build:pages"], "next build");
@@ -20,6 +21,8 @@ test("provides a GitHub Pages static deployment workflow", async () => {
   assert.match(workflow, /npm test/);
   assert.match(workflow, /playwright install --with-deps chromium/);
   assert.match(workflow, /npm run test:e2e/);
+  assert.match(playwright, /process\.env\.CI/);
+  assert.match(playwright, /npm run build && npm run start -- --host 0\.0\.0\.0 --port 3100/);
   assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
   assert.match(workflow, /deploy:[\s\S]*needs:\s*\[build, e2e\]/);
   assert.doesNotMatch(layout, /from "next\/headers"/);
