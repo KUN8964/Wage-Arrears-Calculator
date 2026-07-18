@@ -328,11 +328,28 @@
     font-size: clamp(6rem, 11.5vw, 11.5rem);
     font-weight: var(--vd-font-weight-regular);
     line-height: .88;
-    letter-spacing: -.055em;
+    letter-spacing: .1em;
     white-space: nowrap;
+    animation: none;
   }
 
-  .hero-slogan > span { display: block; }
+  .hero-slogan > .split-text-line {
+    display: block;
+    overflow: clip;
+    padding-block: .08em;
+    margin-block: -.08em;
+  }
+
+  .hero-slogan .split-text-character {
+    display: inline-block;
+    opacity: 0;
+    filter: blur(8px);
+    transform: translate3d(0, .62em, 0) rotateX(-32deg);
+    transform-origin: 50% 100%;
+    animation: vd-split-character-in 720ms var(--vd-ease-out) both;
+    animation-delay: calc(80ms + var(--split-index) * 55ms);
+    will-change: opacity, filter, transform;
+  }
 
   .hero-dot-banner h1 > span.hero-claims {
     max-width: 100%;
@@ -1063,6 +1080,20 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes vd-split-character-in {
+  0% {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translate3d(0, .62em, 0) rotateX(-32deg);
+  }
+  55% { opacity: 1; }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) rotateX(0);
+  }
+}
+
 @keyframes vd-object-in {
   from { opacity: 0; transform: translate(-50%, -50%) rotate(15deg) scale(.7); }
   to { opacity: 1; transform: translate(-50%, -50%) rotate(45deg) scale(1); }
@@ -1185,7 +1216,7 @@
   .hero-scroll { bottom: var(--vd-space-2); }
   .hero-scroll span { display: none; }
   .hero h1 { font-size: clamp(3.25rem, 19vw, 4.5rem); row-gap: var(--vd-space-2); column-gap: var(--vd-space-2); line-height: 1; }
-  .hero-dot-banner h1 > .hero-slogan { font-size: clamp(4.1rem, 20vw, 5.25rem); }
+  .hero-dot-banner h1 > .hero-slogan { font-size: clamp(3.5rem, 16vw, 4.25rem); }
   .hero-dot-banner h1 > .hero-claims { margin-top: var(--vd-space-4); font-size: clamp(1.05rem, 5.2vw, 1.4rem); line-height: 1.25; }
   .hero-dot-banner h1 > em { font-size: 1.2rem; }
   .hero .eyebrow { margin-bottom: var(--vd-space-6); }
@@ -1229,7 +1260,8 @@
   .hero h1 > span,
   .hero h1 > em,
   .hero h1 .hero-interrupt,
-  .grand-card { animation: none; transform: none; }
+  .grand-card,
+  .hero-slogan .split-text-character { animation: none; filter: none; opacity: 1; transform: none; }
   .app-shell *,
   .app-shell *::before,
   .app-shell *::after { scroll-behavior: auto !important; transition: none !important; }

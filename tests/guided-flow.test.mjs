@@ -372,6 +372,7 @@ test("uses aligned sans-serif numerals for calculation results", async () => {
 test("applies the editorial-tech design system without weakening form accessibility", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const dotGrid = await readFile(new URL("../app/dot-grid-background.tsx", import.meta.url), "utf8");
+  const splitText = await readFile(new URL("../app/split-text.tsx", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
   const tokens = await readFile(new URL("../app/design-tokens.css", import.meta.url), "utf8");
   const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
@@ -385,7 +386,11 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(page, /<DotGridBackground\s*\/>/);
   assert.match(page, /工资、社保、公积金、加班工资、年假、报销，统统算清/);
   assert.match(page, /className="hero-start-arrows"/);
-  assert.match(page, /className="hero-slogan"[^>]*><span>FUCK<\/span><span>COMPANY<\/span>/);
+  assert.match(page, /<SplitText className="hero-slogan" lines=\{\["FUCK", "COMPANY"\]\} \/>/);
+  assert.match(page, /import \{ SplitText \} from "\.\/split-text"/);
+  assert.match(splitText, /Array\.from\(line\)\.map/);
+  assert.match(splitText, /"--split-index": index/);
+  assert.match(splitText, /className="split-text-character"/);
   assert.doesNotMatch(page, /<small>开始测算<\/small>/);
   assert.doesNotMatch(page, /约 2 分钟 · 只问与你有关的问题/);
   assert.match(dotGrid, /new ResizeObserver\(resize\)/);
@@ -403,6 +408,11 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(theme, /clip-path: polygon\(/);
   assert.match(theme, /\.hero-actions \{[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*bottom: 0;/);
   assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{[\s\S]*font-size: clamp\(6rem, 11\.5vw, 11\.5rem\)/);
+  assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{[\s\S]*letter-spacing: \.1em/);
+  assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{ font-size: clamp\(3\.5rem, 16vw, 4\.25rem\); \}/);
+  assert.match(theme, /\.hero-slogan \.split-text-character \{[\s\S]*animation: vd-split-character-in 720ms/);
+  assert.match(theme, /animation-delay: calc\(80ms \+ var\(--split-index\) \* 55ms\)/);
+  assert.match(theme, /@keyframes vd-split-character-in/);
   assert.match(theme, /\.hero-primary \{[\s\S]*color: var\(--vd-text-accent\)/);
   assert.doesNotMatch(theme, /gradient\(/);
   assert.doesNotMatch(theme, /backdrop-filter/);

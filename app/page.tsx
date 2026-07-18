@@ -18,6 +18,7 @@ import { addCalendarDays as addDays, addCalendarMonths as addMonths, automaticDo
 import { claimOptions, defaultRule, defaultSetup, type Claim, type DoublePayRule, type FlowStep, type LegacyQuickSetup, type QuestionIssue, type QuickSetup, type RightsPlan, type Row, type SocialRates } from "./calculator-model";
 import { generateMonthlyLedger } from "./monthly-ledger-calculator.mjs";
 import { DotGridBackground } from "./dot-grid-background";
+import { SplitText } from "./split-text";
 
 type TerminationNoticeReason = keyof typeof TERMINATION_NOTICE_REASONS;
 type TerminationNoticeRight = keyof typeof TERMINATION_NOTICE_RIGHTS;
@@ -501,7 +502,7 @@ export default function Home() {
 
     {flowStep==="basic"&&<section className="hero hero-dot-banner">
       <DotGridBackground />
-      <div className="hero-copy"><h1 aria-label="工资、社保、公积金、加班工资、年假、报销，统统算清"><span className="hero-slogan" aria-hidden="true"><span>FUCK</span><span>COMPANY</span></span><span className="hero-claims">工资、社保、公积金、加班工资、年假、报销……</span><em>统统算清</em></h1><div className="hero-actions"><a className="hero-primary" href="#calculator" aria-label="开始测算"><span className="hero-start-label"><b>START</b></span><span className="hero-start-arrows" aria-hidden="true"><i></i><i></i><i></i></span></a></div></div>
+      <div className="hero-copy"><h1 aria-label="工资、社保、公积金、加班工资、年假、报销，统统算清"><SplitText className="hero-slogan" lines={["FUCK", "COMPANY"]} /><span className="hero-claims">工资、社保、公积金、加班工资、年假、报销……</span><em>统统算清</em></h1><div className="hero-actions"><a className="hero-primary" href="#calculator" aria-label="开始测算"><span className="hero-start-label"><b>START</b></span><span className="hero-start-arrows" aria-hidden="true"><i></i><i></i><i></i></span></a></div></div>
     </section>}
 
     <section className="quick-card guided-card" id="calculator">
