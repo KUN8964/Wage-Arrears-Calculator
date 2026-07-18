@@ -34,7 +34,7 @@ test.beforeEach(async ({ page }) => {
 test("completes the guided wage flow, calculates the total and restores saved data", async ({ page }) => {
   await fillDepartedBasics(page, "2026-01-01", "2026-03-31");
   await page.getByRole("button", { name:"下一步：选择事项 →" }).click();
-  await expect(page.getByRole("heading", { name:"工资、社保与劳动权益一表算清" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name:"工资、社保、公积金、加班工资、年假、报销，统统算清" })).toHaveCount(0);
 
   await page.getByRole("button", { name:/工资少发或未发/ }).click();
   await page.getByRole("button", { name:"下一步：回答问题 →" }).click();

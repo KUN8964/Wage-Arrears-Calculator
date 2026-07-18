@@ -12,7 +12,7 @@ test("defaults to a progressive guided calculator", async () => {
   assert.match(page, /查看精算明细/);
   assert.match(page, /selectedClaims\.includes\("wage"\)/);
   assert.match(page, /flowStep === "results"/);
-  assert.match(page, /flowStep==="basic"&&<section className="hero">/);
+  assert.match(page, /flowStep==="basic"&&<section className="hero hero-dot-banner">/);
   assert.match(page, /exceptionRows\.map/);
   assert.doesNotMatch(page, /exceptionRows\.slice\(0,8\)/);
 });
@@ -367,6 +367,7 @@ test("uses aligned sans-serif numerals for calculation results", async () => {
 
 test("applies the editorial-tech design system without weakening form accessibility", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const dotGrid = await readFile(new URL("../app/dot-grid-background.tsx", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
   const tokens = await readFile(new URL("../app/design-tokens.css", import.meta.url), "utf8");
   const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
@@ -377,7 +378,16 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(page, /<main className="app-shell">/);
   assert.match(page, /className="skip-link"/);
   assert.match(page, /id="calculator"/);
-  assert.match(page, /className="hero-interrupt"/);
+  assert.match(page, /<DotGridBackground\s*\/>/);
+  assert.match(page, /工资、社保、公积金、加班工资、年假、报销，统统算清/);
+  assert.match(page, /className="hero-start-arrows"/);
+  assert.match(page, /className="hero-slogan"[^>]*><span>FUCK<\/span><span>COMPANY<\/span>/);
+  assert.doesNotMatch(page, /<small>开始测算<\/small>/);
+  assert.doesNotMatch(page, /约 2 分钟 · 只问与你有关的问题/);
+  assert.match(dotGrid, /new ResizeObserver\(resize\)/);
+  assert.match(dotGrid, /addEventListener\("pointermove"/);
+  assert.match(dotGrid, /prefers-reduced-motion/);
+  assert.match(dotGrid, /x:width \* 0\.9, y:height \* 0\.2/);
   assert.match(tokens, /--vd-color-acid: #efff84/);
   assert.match(tokens, /--vd-type-body-on-dark:/);
   assert.match(tokens, /--vd-type-caption-on-light:/);
@@ -387,6 +397,9 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(theme, /background: var\(--vd-surface-stage\)/);
   assert.match(theme, /\.exception-row > b \{ color: var\(--vd-type-body-on-dark\)/);
   assert.match(theme, /clip-path: polygon\(/);
+  assert.match(theme, /\.hero-actions \{[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*bottom: 0;/);
+  assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{[\s\S]*font-size: clamp\(6rem, 11\.5vw, 11\.5rem\)/);
+  assert.match(theme, /\.hero-primary \{[\s\S]*color: var\(--vd-text-accent\)/);
   assert.doesNotMatch(theme, /gradient\(/);
   assert.doesNotMatch(theme, /backdrop-filter/);
   assert.match(theme, /min-height: var\(--vd-button-height\)/);

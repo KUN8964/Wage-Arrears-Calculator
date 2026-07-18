@@ -17,6 +17,7 @@ import { csvDocument } from "./csv-export.mjs";
 import { addCalendarDays as addDays, addCalendarMonths as addMonths, automaticDoubleRuleFor, doublePayForMonth, oneYearContractEndFor } from "./double-pay-calculator.mjs";
 import { claimOptions, defaultRule, defaultSetup, type Claim, type DoublePayRule, type FlowStep, type LegacyQuickSetup, type QuestionIssue, type QuickSetup, type RightsPlan, type Row, type SocialRates } from "./calculator-model";
 import { generateMonthlyLedger } from "./monthly-ledger-calculator.mjs";
+import { DotGridBackground } from "./dot-grid-background";
 
 type TerminationNoticeReason = keyof typeof TERMINATION_NOTICE_REASONS;
 type TerminationNoticeRight = keyof typeof TERMINATION_NOTICE_RIGHTS;
@@ -490,10 +491,9 @@ export default function Home() {
       <div className="top-actions"><span className="safe">● 数据仅保存在本机</span><button className="ghost" onClick={newCase}>新建</button><button className="ghost" onClick={()=>importInput.current?.click()}>导入</button><button className="ghost" onClick={exportData}>备份</button><button className="ghost" onClick={exportCsv}>CSV</button>{flowStep==="results"&&<button className="ghost report-export" onClick={printReport}>导出报告</button>}<button className="primary" onClick={save}>{saved ? "已保存 ✓" : "保存"}</button><input ref={importInput} className="file-input" type="file" accept="application/json,.json" onChange={e=>{importData(e.target.files?.[0]);e.target.value=""}}/></div>
     </header>
 
-    {flowStep==="basic"&&<section className="hero">
-      <div className="hero-copy"><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1 aria-label="工资、社保与劳动权益一表算清"><span>工资</span><span>社保</span><span className="hero-interrupt" aria-hidden="true"></span><span>权益</span><em>算清</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并可补充工伤情况初筛、导出测算报告。</p></div>
-      <div className="grand-card"><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></div>
-      <a className="hero-scroll" href="#calculator" aria-label="向下滚动，开始引导测算"><span>向下开始测算</span><i aria-hidden="true">↓</i></a>
+    {flowStep==="basic"&&<section className="hero hero-dot-banner">
+      <DotGridBackground />
+      <div className="hero-copy"><h1 aria-label="工资、社保、公积金、加班工资、年假、报销，统统算清"><span className="hero-slogan" aria-hidden="true"><span>FUCK</span><span>COMPANY</span></span><span className="hero-claims">工资、社保、公积金、加班工资、年假、报销……</span><em>统统算清</em></h1><div className="hero-actions"><a className="hero-primary" href="#calculator" aria-label="开始测算"><span className="hero-start-label"><b>START</b></span><span className="hero-start-arrows" aria-hidden="true"><i></i><i></i><i></i></span></a></div></div>
     </section>}
 
     <section className="quick-card guided-card" id="calculator">
