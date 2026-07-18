@@ -1,6 +1,6 @@
 import { isIsoDate, isIsoMonth } from "./date-utils.mjs";
 
-export const CURRENT_BACKUP_VERSION = 11;
+export const CURRENT_BACKUP_VERSION = 15;
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 export const MAX_BACKUP_ROWS = 60;
 
@@ -13,18 +13,21 @@ const SETUP_NUMBER_RANGES = {
   contractPay:[0, MONEY_MAX], firstArrearsPaidRate:[0, 100], socialPaid:[0, MONEY_MAX], socialActualBase:[0, MONEY_MAX],
   socialBase:[0, MONEY_MAX], socialRate:[0, 100], socialPensionRate:[0, 100], socialUnemploymentRate:[0, 100],
   socialInjuryRate:[0, 100], socialMaternityRate:[0, 100], socialMedicalRate:[0, 100], fundPaid:[0, MONEY_MAX],
-  fundBase:[0, MONEY_MAX], fundRate:[0, 100], reimbursementAmount:[0, MONEY_MAX], annualLeaveWorkYears:[0, 100],
+  socialPersonalPensionRate:[0, 100], socialPersonalUnemploymentRate:[0, 100], socialPersonalInjuryRate:[0, 100],
+  socialPersonalMaternityRate:[0, 100], socialPersonalMedicalRate:[0, 100], fundBase:[0, MONEY_MAX], fundRate:[0, 100],
+  fundPersonalRate:[0, 100], reimbursementAmount:[0, MONEY_MAX], annualLeaveWorkYears:[0, 100],
   annualLeaveTakenDays:[0, 100_000], annualLeavePriorUnusedDays:[0, 100_000], annualLeaveAveragePay:[0, MONEY_MAX],
   overtimeWageBase:[0, MONEY_MAX], weekdayOvertimeHours:[0, 100_000], restDayOvertimeHours:[0, 100_000],
   holidayOvertimeHours:[0, 100_000], compTimeWageBase:[0, MONEY_MAX], outstandingCompTimeDays:[0, 100_000],
   terminationAveragePay:[0, MONEY_MAX], terminationAdditionalMonths:[0, 9], terminationExtraPayBase:[0, MONEY_MAX],
   terminationLocalAveragePay:[0, MONEY_MAX], duePay:[0, MONEY_MAX], actualPay:[0, MONEY_MAX],
 };
-const SETUP_DATE_FIELDS = ["employmentDate", "cutoffDate", "contractStart", "contractEnd", "workInjuryDate"];
+const SETUP_DATE_FIELDS = ["employmentDate", "cutoffDate", "departureDate", "contractStart", "contractEnd", "workInjuryDate", "terminationNoticeDate"];
 const SETUP_MONTH_FIELDS = ["arrearsStartMonth", "socialPaidStartMonth", "socialPaidEndMonth", "fundPaidStartMonth", "fundPaidEndMonth", "startMonth", "endMonth"];
 const SETUP_BOOLEAN_FIELDS = ["socialHasPaid", "fundHasPaid", "reimbursementIncluded", "annualLeaveWrittenWaiver", "restDayClaimsDistinct"];
-const SETUP_TEXT_LIMITS = { reimbursementNote:500 };
+const SETUP_TEXT_LIMITS = { reimbursementNote:500, terminationEmployeeName:80, terminationCompanyName:160, terminationNoticeContact:160 };
 const SETUP_ENUMS = {
+  employmentStatus:new Set(["active", "departed"]),
   terminationType:new Set(["forced", "layoff"]),
   personalResignationSigned:new Set(["yes", "no", "unknown"]),
   forcedNoticeSent:new Set(["yes", "no", "unknown"]),
@@ -121,7 +124,10 @@ const validateSetup = value => {
     if (typeof value[key] !== "string" || !values.has(value[key])) fail(`${key}不是允许的选项。`);
     setup[key] = value[key];
   }
-  if (setup.employmentDate && setup.cutoffDate && setup.employmentDate > setup.cutoffDate) fail("统计截止日期不能早于入职日期。");
+  if (setup.employmentDate && setup.cutoffDate && setup.employmentDate > setup.cutoffDate) fail("计薪截止日期不能早于入职日期。");
+  if (setup.employmentStatus === "departed" && !setup.departureDate) fail("已离职状态必须填写离职日期。");
+  if (setup.departureDate && setup.cutoffDate && setup.departureDate !== setup.cutoffDate) fail("离职日期必须与计薪截止日期一致。");
+  if (setup.employmentDate && setup.departureDate && setup.employmentDate > setup.departureDate) fail("离职日期不能早于入职日期。");
   if (setup.employmentDate && setup.contractEnd && setup.employmentDate > setup.contractEnd) fail("合同期满日不能早于入职日期。");
   for (const [startKey, endKey, label] of [["socialPaidStartMonth", "socialPaidEndMonth", "社保实缴期间"], ["fundPaidStartMonth", "fundPaidEndMonth", "公积金实缴期间"]]) {
     if (setup[startKey] && setup[endKey] && setup[startKey] > setup[endKey]) fail(`${label}起止月份顺序错误。`);
@@ -157,5 +163,6 @@ export const validateBackupPayload = value => {
   const flowStep = value.flowStep === undefined ? "results" : value.flowStep;
   if (typeof flowStep !== "string" || !FLOW_STEPS.has(flowStep)) fail("引导步骤状态无效。");
   const caseName = value.caseName === undefined ? "导入的欠款测算" : checkedText(value.caseName, "测算名称", 120).trim() || "导入的欠款测算";
-  return { version:value.version ?? 1, caseName, setup, selectedClaims:claims, flowStep, doubleRule:validateDoubleRule(value.doubleRule), rows };
+  const rowsCutoffDate = value.rowsCutoffDate === undefined ? "" : normalizeOptionalDate(value.rowsCutoffDate, "明细计算截止日");
+  return { version:value.version ?? 1, caseName, setup, selectedClaims:claims, flowStep, rowsCutoffDate, doubleRule:validateDoubleRule(value.doubleRule), rows };
 };

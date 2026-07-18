@@ -21,7 +21,7 @@ test("server-renders the public calculator", async () => {
   assert.match(html, /薪资计算器/);
   assert.match(html, /工资、社保与劳动权益一表算清/);
   assert.match(html, /引导测算/);
-  assert.match(html, /先填写三个基础事实/);
+  assert.match(html, /先确认基础事实/);
   assert.match(html, /SYSTEM GENERATED REPORT/);
   assert.match(html, /工资、社保及劳动权益/);
   assert.doesNotMatch(html, /登录账号|注册账号|codex-preview/);
@@ -35,7 +35,7 @@ test("keeps calculator data local and portable", async () => {
   assert.match(page, /最多支持 11 个月/);
   assert.match(page, /确认并生成结果/);
   assert.match(page, /入职日期/);
-  assert.match(page, /统计截止日期/);
+  assert.match(page, /计薪截止日期/);
   assert.match(page, /开始欠薪月份/);
   assert.match(page, /首个欠薪月实际发了多少/);
   assert.doesNotMatch(page, /劳动合同开始日/);

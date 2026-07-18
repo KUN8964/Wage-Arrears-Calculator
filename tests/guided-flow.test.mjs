@@ -4,13 +4,15 @@ import test from "node:test";
 
 test("defaults to a progressive guided calculator", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /type FlowStep = "basic" \| "scenario" \| "questions" \| "review" \| "results"/);
+  const model = await readFile(new URL("../app/calculator-model.ts", import.meta.url), "utf8");
+  assert.match(model, /type FlowStep = "basic"\|"scenario"\|"questions"\|"review"\|"results"/);
   assert.match(page, /基础事实/);
   assert.match(page, /选择要计算的事项/);
   assert.match(page, /系统推定/);
   assert.match(page, /查看精算明细/);
   assert.match(page, /selectedClaims\.includes\("wage"\)/);
   assert.match(page, /flowStep === "results"/);
+  assert.match(page, /flowStep==="basic"&&<section className="hero">/);
   assert.match(page, /exceptionRows\.map/);
   assert.doesNotMatch(page, /exceptionRows\.slice\(0,8\)/);
 });
@@ -26,7 +28,8 @@ test("keeps unselected claims out of generated rows", async () => {
 
 test("adds reimbursement as an optional claim with an explicit total policy", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /type Claim = "wage" \| "social" \| "fund" \| "doublePay" \| "reimbursement"/);
+  const model = await readFile(new URL("../app/calculator-model.ts", import.meta.url), "utf8");
+  assert.match(model, /type Claim = "wage"\|"social"\|"fund"\|"doublePay"\|"reimbursement"/);
   assert.match(page, /报销费用未支付/);
   assert.match(page, /尚未支付的报销金额/);
   assert.match(page, /reimbursementAmount/);
@@ -34,7 +37,7 @@ test("adds reimbursement as an optional claim with an explicit total policy", as
   assert.match(page, /计入本次合计/);
   assert.match(page, /仅在报告中记录/);
   assert.match(page, /reimbursementEnabled&&setup\.reimbursementIncluded/);
-  assert.match(page, /version:11/);
+  assert.match(page, /version:15/);
 });
 
 test("adds annual leave, overtime and uncompensated rest-day leave to the guided total and report", async () => {
@@ -50,7 +53,7 @@ test("adds annual leave, overtime and uncompensated rest-day leave to the guided
   assert.match(page, /annualLeaveTotal/);
   assert.match(page, /overtimeTotal/);
   assert.match(page, /compTimeTotal/);
-  assert.match(page, /version:11/);
+  assert.match(page, /version:15/);
 });
 
 test("lets users close optional rights modules without clearing their draft values", async () => {
@@ -83,7 +86,8 @@ test("uses the salary calculator name and explains prorated annual leave days", 
 
 test("adds mutually exclusive N and N plus X termination compensation", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /\| "termination"/);
+  const model = await readFile(new URL("../app/calculator-model.ts", import.meta.url), "utf8");
+  assert.match(model, /\|"termination"/);
   assert.match(page, /离职经济补偿/);
   assert.match(page, /被迫离职（N）/);
   assert.match(page, /裁员\/公司解除（N\+X）/);
@@ -100,21 +104,44 @@ test("adds mutually exclusive N and N plus X termination compensation", async ()
   assert.match(page, /terminationCompensation/);
   assert.match(page, /terminationTotal/);
   assert.match(page, /离职经济补偿.*money\(terminationTotal\)/s);
-  assert.match(page, /version:11/);
+  assert.match(page, /生成解除劳动合同通知书/);
+  assert.match(page, /下载 Markdown/);
+  assert.match(page, /下载 Word（\.doc）/);
+  assert.match(page, /生成 PDF/);
+  assert.match(page, /terminationEmployeeName/);
+  assert.match(page, /terminationCompanyName/);
+  assert.match(page, /version:15/);
+});
+
+test("derives the wage cutoff from employment status and exposes monthly wage adjustments", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const model = await readFile(new URL("../app/calculator-model.ts", import.meta.url), "utf8");
+  assert.match(model, /employmentStatus:"active"\|"departed"/);
+  assert.match(page, /当前在职/);
+  assert.match(page, /已经离职/);
+  assert.match(page, /离职日期/);
+  assert.match(page, /计薪截止日期/);
+  assert.match(page, /todayInputValue\(\)/);
+  assert.match(page, /proratedMonthlyWage/);
+  assert.match(page, /按月调整应发工资/);
+  assert.match(page, /请假、病假、缺勤、奖金或工资变动/);
+  assert.match(page, /工资调整说明/);
+  assert.match(page, /恢复预填/);
 });
 
 test("adds a closable work injury screening without adding an estimated award to the total", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(page, /\| "workInjury"/);
+  const model = await readFile(new URL("../app/calculator-model.ts", import.meta.url), "utf8");
+  assert.match(model, /\|"workInjury"/);
   assert.match(page, /工伤情况初筛/);
-  assert.match(page, /资格与申报期限初筛，不计入合计/);
+  assert.match(model, /资格与申报期限初筛，不计入合计/);
   assert.match(page, /aria-label="关闭工伤情况初筛"/);
   assert.match(page, /workInjuryScreening/);
   assert.match(page, /事故后 30 日内/);
   assert.match(page, /事故后 1 年内/);
   assert.match(page, /工伤认定申请表、劳动关系证明、医疗诊断或职业病诊断材料/);
-  assert.doesNotMatch(page, /grandTotal=.*workInjury/);
+  assert.doesNotMatch(page, /rightsFulfillmentTotal=.*workInjury/);
   assert.match(css, /\.injury-screening/);
   assert.match(css, /\.injury-kind>button:focus-visible/);
 });
@@ -186,41 +213,83 @@ test("adds a personalized rights-enforcement plan on screen and in the report", 
   assert.doesNotMatch(css, /\.report-rights-plan\{break-before:page/);
 });
 
-test("calculates social insurance from the actual declared base and five employer rates", async () => {
+test("calculates Hangzhou social insurance from the actual declared base and four contribution lines", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /公司实际申报缴费基数/);
   assert.match(page, /养老保险/);
   assert.match(page, /失业保险/);
   assert.match(page, /工伤保险/);
-  assert.match(page, /生育保险/);
-  assert.match(page, /医疗保险/);
+  assert.match(page, /职工医保（含生育）/);
+  assert.doesNotMatch(page, /\["生育保险","socialMaternityRate"\]/);
   assert.match(page, /socialActualBase/);
-  assert.match(page, /五险公司费率合计/);
+  assert.match(page, /社保公司费率合计/);
+  assert.match(page, /杭州企业职工参考（核对至 2026-07-18）/);
+  assert.match(page, /工伤保险行业基准费率/);
   assert.match(page, /单位缴存比例法定范围 5%–12%/);
   assert.match(page, /修改应缴测算基数/);
 });
 
 test("uses the contract salary as the expected base while keeping fund floors", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const model = await readFile(new URL("../app/calculator-model.ts", import.meta.url), "utf8");
   assert.match(page, /socialBase\|\|setup\.contractPay/);
   assert.match(page, /fundBase\|\|setup\.contractPay/);
   assert.match(page, /Math\.max\(inferredFundPaidRate/);
-  assert.match(page, /公司实际缴纳 = 实际申报基数 × 五险公司费率合计/);
-  assert.match(page, /应缴金额 = 应缴测算基数 × 五险公司费率合计/);
-  assert.match(page, /默认参考比例/);
-  assert.match(page, /fundRate: 5/);
+  assert.match(page, /公司实际缴纳 = 实际申报基数 × 社保公司费率合计/);
+  assert.match(page, /应缴金额 = 应缴测算基数 × 社保公司费率合计/);
+  assert.match(page, /杭州企业职工参考/);
+  assert.match(model, /fundRate:5/);
 });
 
 test("computes five-insurance actual payment and shortfall from two bases", async () => {
   const { DEFAULT_SOCIAL_RATES, totalEmployerRate, socialContributionForMonth, declaredBaseFromPaidAmount } = await import("../app/contribution-calculator.mjs");
-  assert.equal(totalEmployerRate(DEFAULT_SOCIAL_RATES), 28.9);
+  assert.equal(totalEmployerRate(DEFAULT_SOCIAL_RATES), 27.6);
   assert.deepEqual(socialContributionForMonth({ expectedBase: 20_000, actualBase: 4_986, rates: DEFAULT_SOCIAL_RATES }), {
-    rate: 28.9,
-    expected: 5_780,
-    actual: 1_440.954,
-    gap: 4_339.046,
+    rate: 27.6,
+    expected: 5_520,
+    actual: 1_376.14,
+    gap: 4_143.86,
   });
-  assert.equal(declaredBaseFromPaidAmount(398.88, DEFAULT_SOCIAL_RATES), 1_380.208);
+  assert.equal(declaredBaseFromPaidAmount(398.88, DEFAULT_SOCIAL_RATES), 1_445.22);
+});
+
+test("shows and calculates the housing fund shortfall from the wage-inferred base", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const { fundContributionForMonth } = await import("../app/contribution-calculator.mjs");
+  assert.deepEqual(fundContributionForMonth({ expectedBase:20_000, actualPaid:250, rate:5 }), {
+    rate:5,
+    expected:1_000,
+    actual:250,
+    gap:750,
+  });
+  assert.match(page, /公司实际缴纳 = 填写的单位月缴金额/);
+  assert.match(page, /应缴金额 = 工资推定基数 × 系统采用比例/);
+  assert.match(page, /每月少缴/);
+  assert.match(page, /hasSocialPaidPeriod/);
+  assert.match(page, /已带入社保开始缴费月份，可修改/);
+  assert.match(page, /已带入社保最后缴费月份，可修改/);
+});
+
+test("allocates personal contributions without inflating the rights fulfillment total", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const { DEFAULT_PERSONAL_SOCIAL_RATES, personalContributionsForArrears, totalPersonalRate } = await import("../app/contribution-calculator.mjs");
+  assert.equal(totalPersonalRate(DEFAULT_PERSONAL_SOCIAL_RATES), 10.5);
+  assert.deepEqual(personalContributionsForArrears({ arrears:14_000, grossWage:20_000, socialBase:20_000, socialRate:10.5, fundBase:20_000, fundRate:5 }), {
+    arrearsRatio:0.7,
+    social:1_470,
+    fund:700,
+    total:2_170,
+  });
+  assert.match(page, /权益履行总额/);
+  assert.match(page, /个人应缴部分/);
+  assert.match(page, /预计个人实际取得/);
+  assert.match(page, /支付给本人/);
+  assert.match(page, /缴入社保/);
+  assert.match(page, /缴入公积金/);
+  assert.match(page, /本人上年度月平均工资/);
+  assert.match(page, /当地上下限修正/);
+  assert.match(page, /socialPersonalPensionRate/);
+  assert.match(page, /fundPersonalRate/);
 });
 
 test("does not ask users for a contract start date that the calculation does not use", async () => {
@@ -228,7 +297,9 @@ test("does not ask users for a contract start date that the calculation does not
   assert.doesNotMatch(page, /劳动合同开始日/);
   assert.match(page, /未签订劳动合同或合同到期仍在工作/);
   assert.match(page, /合同上写的最后一天/);
-  assert.match(page, /双倍工资只需要合同期满日/);
+  assert.match(page, /系统先按一年期合同推定到期日/);
+  assert.match(page, /oneYearContractEndFor/);
+  assert.match(page, /请按劳动合同直接修改/);
 });
 
 test("aligns contract salary with date inputs without a currency icon", async () => {
@@ -276,8 +347,10 @@ test("derives the actual wage-arrears period from rows that still contain arrear
 
 test("limits displayed and exported numeric precision to two decimal places", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const csvExport = await readFile(new URL("../app/csv-export.mjs", import.meta.url), "utf8");
   assert.match(page, /minimumFractionDigits: 2, maximumFractionDigits: 2/);
-  assert.match(page, /const csvValue = .*value\.toFixed\(2\)/);
+  assert.match(csvExport, /value\.toFixed\(2\)/);
+  assert.match(csvExport, /FORMULA_PREFIX/);
   assert.match(page, /step="0\.01"/);
   assert.doesNotMatch(page, /toFixed\(1\)/);
   assert.doesNotMatch(page, /step="0\.001"/);
@@ -356,4 +429,13 @@ test("keeps compound money inputs unobstructed while focused", async () => {
   assert.match(theme, /\.module-fields \.money-input input:focus[\s\S]*border: 0/);
   assert.match(theme, /\.money-input:focus-within[\s\S]*outline: 2px solid var\(--vd-color-ink\)/);
   assert.match(theme, /\.money-input input,[\s\S]*outline: 0/);
+});
+
+test("aligns settlement columns and text rows across both allocation grids", async () => {
+  const theme = await readFile(new URL("../app/vandslab-theme.css", import.meta.url), "utf8");
+  assert.match(theme, /\.settlement-kpis \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(theme, /\.fund-flow \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(theme, /\.settlement-kpis article \{[^}]*grid-template-rows:/);
+  assert.match(theme, /\.fund-flow > div \{[^}]*grid-template-rows:/);
+  assert.match(theme, /\.fund-flow \{[^}]*border-top: 0/);
 });

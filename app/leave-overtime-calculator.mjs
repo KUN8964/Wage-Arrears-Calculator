@@ -1,4 +1,5 @@
 import { parseIsoDateUtc } from "./date-utils.mjs";
+import { roundMoney, sumMoney } from "./money-utils.mjs";
 
 const positive = value => Math.max(0, Number(value) || 0);
 
@@ -25,19 +26,20 @@ export const proratedAnnualLeaveDays = ({ employmentDate, cutoffDate, cumulative
   return Math.max(0, Math.floor(employedDays / 365 * statutoryDays - positive(takenDays)));
 };
 
-export const dailyWage = monthlyWage => positive(monthlyWage) / 21.75;
-export const hourlyWage = monthlyWage => dailyWage(monthlyWage) / 8;
+export const dailyWage = monthlyWage => roundMoney(positive(monthlyWage) / 21.75);
+export const hourlyWage = monthlyWage => roundMoney(positive(monthlyWage) / 21.75 / 8);
 
 export const annualLeaveCompensation = ({ averageMonthlyPay, unusedDays, writtenWaiver = false }) =>
-  writtenWaiver ? 0 : dailyWage(averageMonthlyPay) * positive(unusedDays) * 2;
+  writtenWaiver ? 0 : roundMoney(positive(averageMonthlyPay) / 21.75 * positive(unusedDays) * 2);
 
 export const overtimeCompensation = ({ monthlyWageBase, weekdayHours = 0, restDayHours = 0, holidayHours = 0 }) => {
-  const hourly = hourlyWage(monthlyWageBase);
-  const weekday = hourly * positive(weekdayHours) * 1.5;
-  const restDay = hourly * positive(restDayHours) * 2;
-  const holiday = hourly * positive(holidayHours) * 3;
-  return { hourly, weekday, restDay, holiday, total: weekday + restDay + holiday };
+  const rawHourly = positive(monthlyWageBase) / 21.75 / 8;
+  const hourly = roundMoney(rawHourly);
+  const weekday = roundMoney(rawHourly * positive(weekdayHours) * 1.5);
+  const restDay = roundMoney(rawHourly * positive(restDayHours) * 2);
+  const holiday = roundMoney(rawHourly * positive(holidayHours) * 3);
+  return { hourly, weekday, restDay, holiday, total:sumMoney([weekday, restDay, holiday]) };
 };
 
 export const compTimeCompensation = ({ monthlyWageBase, outstandingDays = 0 }) =>
-  dailyWage(monthlyWageBase) * positive(outstandingDays) * 2;
+  roundMoney(positive(monthlyWageBase) / 21.75 * positive(outstandingDays) * 2);

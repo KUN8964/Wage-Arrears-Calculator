@@ -22,9 +22,36 @@ const validBackup = () => ({
 test("accepts a valid backup and normalizes supported legacy slash dates", () => {
   const payload = validBackup();
   payload.rows[0].payDate = "2026/1/31";
+  payload.setup.terminationEmployeeName = "张三";
+  payload.setup.terminationCompanyName = "示例科技有限公司";
+  payload.setup.terminationNoticeContact = "13800000000";
+  payload.setup.terminationNoticeDate = "2026-01-31";
   const result = validateBackupPayload(payload);
   assert.equal(result.rows[0].payDate, "2026-01-31");
+  assert.equal(result.setup.terminationCompanyName, "示例科技有限公司");
+  assert.equal(result.setup.terminationNoticeDate, "2026-01-31");
   assert.deepEqual(result.selectedClaims, ["wage", "social"]);
+});
+
+test("accepts an explicit employment status and matching departure cutoff", () => {
+  const payload = validBackup();
+  payload.version = 14;
+  payload.setup.employmentStatus = "departed";
+  payload.setup.departureDate = "2026-01-31";
+  const result = validateBackupPayload(payload);
+  assert.equal(result.setup.employmentStatus, "departed");
+  assert.equal(result.setup.departureDate, result.setup.cutoffDate);
+});
+
+test("accepts and validates the v15 monthly-row cutoff snapshot", () => {
+  const payload = validBackup();
+  payload.version = 15;
+  payload.rowsCutoffDate = "2026-01-31";
+  const result = validateBackupPayload(payload);
+  assert.equal(result.rowsCutoffDate, "2026-01-31");
+
+  payload.rowsCutoffDate = "2026-02-31";
+  assert.throws(() => validateBackupPayload(payload), BackupValidationError);
 });
 
 test("keeps validated legacy fields available for the existing migration path", () => {
@@ -56,11 +83,20 @@ test("rejects impossible dates, negative amounts and unknown claims", () => {
   const invalidResignation = validBackup();
   invalidResignation.setup.personalResignationSigned = "maybe";
   assert.throws(() => validateBackupPayload(invalidResignation), BackupValidationError);
+
+  const missingDeparture = validBackup();
+  missingDeparture.setup.employmentStatus = "departed";
+  assert.throws(() => validateBackupPayload(missingDeparture), BackupValidationError);
+
+  const mismatchedDeparture = validBackup();
+  mismatchedDeparture.setup.employmentStatus = "departed";
+  mismatchedDeparture.setup.departureDate = "2026-01-30";
+  assert.throws(() => validateBackupPayload(mismatchedDeparture), BackupValidationError);
 });
 
 test("rejects unsupported versions, excessive rows and oversized files", () => {
   const future = validBackup();
-  future.version = 12;
+  future.version = 16;
   assert.throws(() => validateBackupPayload(future), BackupValidationError);
 
   const excessive = validBackup();

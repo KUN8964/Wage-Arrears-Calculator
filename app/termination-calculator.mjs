@@ -1,4 +1,5 @@
 import { parseIsoDateUtc } from "./date-utils.mjs";
+import { roundMoney, sumMoney } from "./money-utils.mjs";
 
 const positive = value => Math.max(0, Number(value) || 0);
 
@@ -40,8 +41,8 @@ export const terminationCompensation = ({
   const nMonthlyBase = highIncomeCapped ? localAverage * 3 : averagePay;
   const safeExtraMonths = Math.min(9, Math.max(0, Math.trunc(Number(extraMonths) || 0)));
   const extraMonthlyBase = positive(extraMonthlyPay) || averagePay;
-  const economic = appliedN * nMonthlyBase;
-  const extra = safeExtraMonths * extraMonthlyBase;
+  const economic = roundMoney(appliedN * nMonthlyBase);
+  const extra = roundMoney(safeExtraMonths * extraMonthlyBase);
   return {
     rawN,
     appliedN,
@@ -50,7 +51,7 @@ export const terminationCompensation = ({
     extraMonthlyBase,
     economic,
     extra,
-    total:economic + extra,
+    total:sumMoney([economic, extra]),
     highIncomeCapped,
   };
 };

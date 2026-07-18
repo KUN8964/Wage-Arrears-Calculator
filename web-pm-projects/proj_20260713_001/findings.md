@@ -4,7 +4,7 @@
 
 - Local path: `/Users/ngwa/Documents/欠薪社保计算平台`
 - Current architecture: 单路由 React 客户端页面，计算、状态、导入导出和界面集中在 `app/page.tsx`。
-- Persistence: `xinbao-rows`、`xinbao-double-rule`、`xinbao-meta` 三组 localStorage 数据，JSON 备份版本为 4。
+- Persistence: `xinbao-rows`、`xinbao-double-rule`、`xinbao-meta` 三组 localStorage 数据，JSON 备份版本为 15；另存 `rowsCutoffDate` 用于识别在职跨日快照。
 - Current user flow: 用户先填写一个包含约 18 个字段的大表单，再生成逐月明细并手工修正。
 - Current constraint: 无账号、无服务端业务数据、可直接推送 Git 仓库并静态化部署。
 

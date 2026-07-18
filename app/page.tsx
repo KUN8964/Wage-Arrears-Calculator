@@ -2,85 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { assertBackupFileSize, BackupValidationError, validateBackupPayload } from "./backup-validation.mjs";
+import { employmentSnapshotFor, restoredRowsNeedReview } from "./case-migration.mjs";
 import { parseIsoDateLocal } from "./date-utils.mjs";
-import { DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, socialContributionForMonth, totalEmployerRate } from "./contribution-calculator.mjs";
+import { DEFAULT_PERSONAL_SOCIAL_RATES, DEFAULT_SOCIAL_RATES, declaredBaseFromPaidAmount, fundContributionForMonth, personalContributionsForArrears, socialContributionForMonth, totalEmployerRate, totalPersonalRate } from "./contribution-calculator.mjs";
 import { annualLeaveCompensation, compTimeCompensation, currentYearEmploymentDays, dailyWage, overtimeCompensation, proratedAnnualLeaveDays, statutoryAnnualLeaveDays } from "./leave-overtime-calculator.mjs";
+import { monthlyEmploymentSpan, proratedMonthlyWage } from "./monthly-wage-calculator.mjs";
+import { roundMoney, sumMoney } from "./money-utils.mjs";
 import { terminationCompensation } from "./termination-calculator.mjs";
+import { buildTerminationNotice, safeTerminationNoticeFileName, TERMINATION_NOTICE_REASONS, TERMINATION_NOTICE_RIGHTS } from "./termination-notice.mjs";
 import { WORK_INJURY_KINDS, workInjuryScreening } from "./work-injury-screening.mjs";
 import { buildRightsRoutePlan } from "./rights-route-planner.mjs";
+import { contributionGap, rowSettlementStatus, wageArrears } from "./row-calculator.mjs";
+import { csvDocument } from "./csv-export.mjs";
+import { addCalendarDays as addDays, addCalendarMonths as addMonths, automaticDoubleRuleFor, doublePayForMonth, oneYearContractEndFor } from "./double-pay-calculator.mjs";
+import { claimOptions, defaultRule, defaultSetup, type Claim, type DoublePayRule, type FlowStep, type LegacyQuickSetup, type QuestionIssue, type QuickSetup, type RightsPlan, type Row, type SocialRates } from "./calculator-model";
+import { generateMonthlyLedger } from "./monthly-ledger-calculator.mjs";
 
-type Row = {
-  id: number;
-  wageMonth: string;
-  payDate: string;
-  normalPay: number;
-  note: string;
-  paid: number;
-  status: "已结清" | "未结清";
-  duePay: number;
-  arrears: number;
-  contractPay: number;
-  socialPaid: number;
-  socialBase: number;
-  socialRate: number;
-  socialDue: number;
-  fundPaid: number;
-  fundBase: number;
-  fundRate: number;
-  fundDue: number;
-};
-
-type DoublePayRule = { enabled: boolean; contractEnd: string; continuedUntil: string };
-const defaultRule: DoublePayRule = { enabled: false, contractEnd: "", continuedUntil: "" };
-type Claim = "wage" | "social" | "fund" | "doublePay" | "reimbursement" | "annualLeave" | "overtime" | "compTime" | "termination" | "workInjury";
-type FlowStep = "basic" | "scenario" | "questions" | "review" | "results";
-type SocialRates = { pension: number; unemployment: number; injury: number; maternity: number; medical: number };
-type Confirmation = "yes" | "no" | "unknown";
-type QuestionIssue = { id:string; message:string; targetId:string };
-type RightsRoute = { id:string; tone:"primary"|"secondary"|"warning"; badge:string; title:string; suitable:string; description:string; steps:string[]; caution:string };
-type RightsPlan = { headline:string; summary:string; routes:RightsRoute[]; evidence:string[]; activeMoneyClaims:string[]; socialGapKind:"none"|"underpaid"|"unpaid" };
-type QuickSetup = {
-  employmentDate: string; cutoffDate: string; contractStart: string; contractEnd: string; contractPay: number;
-  arrearsStartMonth: string; firstArrearsPaidRate: number;
-  socialHasPaid: boolean; socialPaid: number; socialActualBase: number; socialPaidStartMonth: string; socialPaidEndMonth: string; socialBase: number; socialRate: number;
-  socialPensionRate: number; socialUnemploymentRate: number; socialInjuryRate: number; socialMaternityRate: number; socialMedicalRate: number;
-  fundHasPaid: boolean; fundPaid: number; fundPaidStartMonth: string; fundPaidEndMonth: string; fundBase: number; fundRate: number;
-  reimbursementAmount: number; reimbursementNote: string; reimbursementIncluded: boolean;
-  annualLeaveWorkYears: number; annualLeaveTakenDays: number; annualLeavePriorUnusedDays: number; annualLeaveAveragePay: number; annualLeaveWrittenWaiver: boolean;
-  overtimeWageBase: number; weekdayOvertimeHours: number; restDayOvertimeHours: number; holidayOvertimeHours: number;
-  compTimeWageBase: number; outstandingCompTimeDays: number; restDayClaimsDistinct: boolean;
-  terminationType: "forced" | "layoff"; terminationAveragePay: number; terminationAdditionalMonths: number; terminationExtraPayBase: number; terminationLocalAveragePay: number;
-  personalResignationSigned: Confirmation; forcedNoticeSent: Confirmation; forcedNoticeProof: Confirmation;
-  workInjuryKind: keyof typeof WORK_INJURY_KINDS; workInjuryDate: string; workInjuryCommuteResponsibility: "nonPrimary" | "primary" | "pending"; workInjuryEmployerApplied: "yes" | "no" | "unknown";
-};
-type LegacyQuickSetup = Partial<QuickSetup> & { startMonth?: string; endMonth?: string; duePay?: number; actualPay?: number };
-const defaultSetup: QuickSetup = {
-  employmentDate: "", cutoffDate: "", contractStart: "", contractEnd: "", contractPay: 0,
-  arrearsStartMonth: "", firstArrearsPaidRate: 0,
-  socialHasPaid: false, socialPaid: 0, socialActualBase: 0, socialPaidStartMonth: "", socialPaidEndMonth: "", socialBase: 0, socialRate: 28.9,
-  socialPensionRate: DEFAULT_SOCIAL_RATES.pension, socialUnemploymentRate: DEFAULT_SOCIAL_RATES.unemployment,
-  socialInjuryRate: DEFAULT_SOCIAL_RATES.injury, socialMaternityRate: DEFAULT_SOCIAL_RATES.maternity, socialMedicalRate: DEFAULT_SOCIAL_RATES.medical,
-  fundHasPaid: false, fundPaid: 0, fundPaidStartMonth: "", fundPaidEndMonth: "", fundBase: 0, fundRate: 5,
-  reimbursementAmount: 0, reimbursementNote: "", reimbursementIncluded: true,
-  annualLeaveWorkYears: 1, annualLeaveTakenDays: 0, annualLeavePriorUnusedDays: 0, annualLeaveAveragePay: 0, annualLeaveWrittenWaiver: false,
-  overtimeWageBase: 0, weekdayOvertimeHours: 0, restDayOvertimeHours: 0, holidayOvertimeHours: 0,
-  compTimeWageBase: 0, outstandingCompTimeDays: 0, restDayClaimsDistinct: false,
-  terminationType:"forced", terminationAveragePay:0, terminationAdditionalMonths:1, terminationExtraPayBase:0, terminationLocalAveragePay:0,
-  personalResignationSigned:"unknown", forcedNoticeSent:"unknown", forcedNoticeProof:"unknown",
-  workInjuryKind:"unclear", workInjuryDate:"", workInjuryCommuteResponsibility:"pending", workInjuryEmployerApplied:"unknown",
-};
-const claimOptions: { key: Claim; title: string; copy: string; mark: string }[] = [
-  {key:"wage",title:"工资少发或未发",copy:"从欠薪开始月自动计算",mark:"欠"},
-  {key:"social",title:"社保少缴或未缴",copy:"计算公司部分尚欠差额",mark:"社"},
-  {key:"fund",title:"公积金少缴或未缴",copy:"实缴金额先抵扣应缴",mark:"积"},
-  {key:"doublePay",title:"未签订劳动合同或合同到期仍在工作",copy:"满一个月自动双倍计薪",mark:"2×"},
-  {key:"reimbursement",title:"报销费用未支付",copy:"可计入合计或仅在报告记录",mark:"报"},
-  {key:"annualLeave",title:"未休年假折现",copy:"按工龄和离职当年天数折算",mark:"年"},
-  {key:"overtime",title:"加班工资未支付",copy:"工作日、休息日和法定节假日分开算",mark:"加"},
-  {key:"compTime",title:"调休尚未兑现",copy:"只计算休息日加班尚未补休",mark:"休"},
-  {key:"termination",title:"离职经济补偿",copy:"被迫离职 N / 公司解除 N+X",mark:"N"},
-  {key:"workInjury",title:"工作中或通勤途中受伤",copy:"资格与申报期限初筛，不计入合计",mark:"伤"},
-];
+type TerminationNoticeReason = keyof typeof TERMINATION_NOTICE_REASONS;
+type TerminationNoticeRight = keyof typeof TERMINATION_NOTICE_RIGHTS;
 
 const exampleRows: Row[] = [
   [1,"2025/06",0,"",0,"已结清",0,0,20000,384.96,4812,3979.256,250,2490,2101.2],
@@ -107,90 +46,64 @@ const exampleRows: Row[] = [
 
 const blankRow = (): Row => ({ id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"", paid:0, status:"未结清", duePay:0, arrears:0, contractPay:0, socialPaid:0, socialBase:0, socialRate:0, socialDue:0, fundPaid:0, fundBase:0, fundRate:0, fundDue:0 });
 
-const socialDueFor = (row: Row) => Math.max(0, Number(row.socialBase || 0) * Number(row.socialRate || 0) / 100 - Number(row.socialPaid || 0));
-const fundDueFor = (row: Row) => Math.max(0, Number(row.fundBase || 0) * Number(row.fundRate || 0) / 100 - Number(row.fundPaid || 0));
+const socialDueFor = (row: Row) => contributionGap({base:row.socialBase,rate:row.socialRate,paid:row.socialPaid});
+const fundDueFor = (row: Row) => contributionGap({base:row.fundBase,rate:row.fundRate,paid:row.fundPaid});
 const monthCountBetween = (startValue: string, endValue: string) => {
   const start = atMidnight(startValue), end = atMidnight(endValue);
   if (!start || !end || end < start) return 0;
   return (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1;
 };
-const monthIsWithin = (month: string, startMonth: string, endMonth: string) => Boolean(month && startMonth && endMonth && month >= startMonth && month <= endMonth);
 const normalizeRow = (row: Row, index = 0): Row => {
-  if (row.socialRate != null && row.fundRate != null) return row;
+  if (row.socialRate != null && row.fundRate != null) return {...row,status:rowSettlementStatus(row)};
   const fallback = exampleRows[Math.min(index, exampleRows.length - 1)] || blankRow();
   const socialBase = Number(row.contractPay || row.socialBase || 0);
   const fundBase = Number(row.contractPay || row.fundBase || 0);
-  return {
+  const normalized = {
     ...fallback, ...row, socialBase, fundBase,
     socialRate: socialBase ? (Number(row.socialDue || 0) + Number(row.socialPaid || 0)) / socialBase * 100 : 0,
     fundRate: fundBase ? (Number(row.fundDue || 0) + Number(row.fundPaid || 0)) / fundBase * 100 : 0,
-  };
+  } as Row;
+  return {...normalized,status:rowSettlementStatus(normalized)};
 };
 
 const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const percent = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const csvValue = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : String(value ?? "");
 const atMidnight = (value: string) => parseIsoDateLocal(value);
-const addDays = (date: Date, days: number) => { const next = new Date(date); next.setDate(next.getDate() + days); return next; };
-const addMonths = (date: Date, months: number) => {
-  const targetMonth = date.getMonth() + months;
-  const lastDay = new Date(date.getFullYear(), targetMonth + 1, 0).getDate();
-  return new Date(date.getFullYear(), targetMonth, Math.min(date.getDate(), lastDay));
-};
 const dateLabel = (date: Date | null) => date ? date.toLocaleDateString("zh-CN") : "—";
 const normalizeSetup = (old: LegacyQuickSetup = {}): QuickSetup => {
-  const oldEnd = old.endMonth ? new Date(Number(old.endMonth.slice(0,4)), Number(old.endMonth.slice(5,7)), 0) : null;
   const employmentDate = old.employmentDate || (old.startMonth ? `${old.startMonth}-01` : "");
-  const cutoffDate = old.cutoffDate || (oldEnd ? `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,"0")}-${String(oldEnd.getDate()).padStart(2,"0")}` : "");
+  const { employmentStatus, departureDate, cutoffDate } = employmentSnapshotFor(old, todayInputValue());
   const current = {...old};
   delete current.startMonth;
   delete current.endMonth;
   delete current.duePay;
   delete current.actualPay;
-  const rates: SocialRates = {
+  const legacyDefaultRates = Number(old.socialPensionRate)===14
+    && Number(old.socialUnemploymentRate)===2
+    && Number(old.socialInjuryRate)===0.8
+    && Number(old.socialMaternityRate)===0.6
+    && Number(old.socialMedicalRate)===11.5;
+  const storedRates: SocialRates = {
     pension:Number(old.socialPensionRate ?? DEFAULT_SOCIAL_RATES.pension), unemployment:Number(old.socialUnemploymentRate ?? DEFAULT_SOCIAL_RATES.unemployment),
     injury:Number(old.socialInjuryRate ?? DEFAULT_SOCIAL_RATES.injury), maternity:Number(old.socialMaternityRate ?? DEFAULT_SOCIAL_RATES.maternity), medical:Number(old.socialMedicalRate ?? DEFAULT_SOCIAL_RATES.medical),
   };
+  const rates:SocialRates = legacyDefaultRates
+    ? {...DEFAULT_SOCIAL_RATES}
+    : {...storedRates,maternity:0,medical:storedRates.medical+storedRates.maternity};
   const socialRate = totalEmployerRate(rates);
   const socialActualBase = Number(old.socialActualBase||0) || declaredBaseFromPaidAmount(Number(old.socialPaid||0), rates);
-  return {...defaultSetup, ...current, employmentDate, cutoffDate, contractStart:old.contractStart || employmentDate, socialActualBase, socialRate,
+  const storedPersonalRates:SocialRates = {
+    pension:Number(old.socialPersonalPensionRate ?? DEFAULT_PERSONAL_SOCIAL_RATES.pension), unemployment:Number(old.socialPersonalUnemploymentRate ?? DEFAULT_PERSONAL_SOCIAL_RATES.unemployment),
+    injury:Number(old.socialPersonalInjuryRate ?? DEFAULT_PERSONAL_SOCIAL_RATES.injury), maternity:Number(old.socialPersonalMaternityRate ?? DEFAULT_PERSONAL_SOCIAL_RATES.maternity), medical:Number(old.socialPersonalMedicalRate ?? DEFAULT_PERSONAL_SOCIAL_RATES.medical),
+  };
+  const personalRates:SocialRates = {...storedPersonalRates,maternity:0,medical:storedPersonalRates.medical+storedPersonalRates.maternity};
+  return {...defaultSetup, ...current, employmentStatus, employmentDate, departureDate, cutoffDate, contractStart:old.contractStart || employmentDate, socialActualBase, socialRate,
     socialPensionRate:rates.pension, socialUnemploymentRate:rates.unemployment, socialInjuryRate:rates.injury, socialMaternityRate:rates.maternity, socialMedicalRate:rates.medical,
-    fundRate:Number(old.fundRate||0)>0?Number(old.fundRate):5, socialHasPaid:old.socialHasPaid ?? Number(old.socialPaid||0)>0, fundHasPaid:old.fundHasPaid ?? Number(old.fundPaid||0)>0};
+    socialPersonalPensionRate:personalRates.pension, socialPersonalUnemploymentRate:personalRates.unemployment, socialPersonalInjuryRate:personalRates.injury,
+    socialPersonalMaternityRate:personalRates.maternity, socialPersonalMedicalRate:personalRates.medical,
+    fundRate:Number(old.fundRate||0)>0?Number(old.fundRate):5, fundPersonalRate:Number(old.fundPersonalRate ?? 5), socialHasPaid:old.socialHasPaid ?? Number(old.socialPaid||0)>0, fundHasPaid:old.fundHasPaid ?? Number(old.fundPaid||0)>0};
 };
 const todayInputValue = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`; };
-const weekdayCount = (start: Date, endExclusive: Date) => {
-  let count = 0;
-  for (let day = new Date(start); day < endExclusive; day = addDays(day, 1)) if (day.getDay() !== 0 && day.getDay() !== 6) count++;
-  return count;
-};
-
-function doublePayForRow(row: Row, rule: DoublePayRule) {
-  const contractEnd = atMidnight(rule.contractEnd);
-  const continuedUntil = atMidnight(rule.continuedUntil);
-  if (!rule.enabled || !contractEnd || !continuedUntil || !/^\d{4}-\d{2}$/.test(row.wageMonth)) return 0;
-  const eligibleStart = addDays(contractEnd, 1);
-  if (addDays(continuedUntil, 1) < addMonths(eligibleStart, 1)) return 0;
-  const capExclusive = addMonths(eligibleStart, 11);
-  const continuedEndExclusive = addDays(continuedUntil, 1);
-  const workEndExclusive = continuedEndExclusive < capExclusive ? continuedEndExclusive : capExclusive;
-  const [year, month] = row.wageMonth.split("-").map(Number);
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 1);
-  const overlapStart = monthStart > eligibleStart ? monthStart : eligibleStart;
-  const overlapEnd = monthEnd < workEndExclusive ? monthEnd : workEndExclusive;
-  if (overlapEnd <= overlapStart) return 0;
-  const monthWorkdays = weekdayCount(monthStart, monthEnd);
-  return monthWorkdays ? Number(row.contractPay || 0) * weekdayCount(overlapStart, overlapEnd) / monthWorkdays : 0;
-}
-
-function automaticDoubleRuleFor(setup: QuickSetup, fallback: DoublePayRule): DoublePayRule {
-  if (!setup.contractEnd || !setup.cutoffDate) return fallback;
-  const contractEnd = atMidnight(setup.contractEnd), continuedUntil = atMidnight(setup.cutoffDate);
-  if (!contractEnd || !continuedUntil) return defaultRule;
-  const eligibleStart = addDays(contractEnd, 1);
-  return { contractEnd:setup.contractEnd, continuedUntil:setup.cutoffDate, enabled:addDays(continuedUntil, 1) >= addMonths(eligibleStart, 1) };
-}
-
 const fields: { key: keyof Row; label: string; group?: string; width?: number }[] = [
   {key:"wageMonth",label:"工资所属月",width:112}, {key:"payDate",label:"实际发薪日",width:126}, {key:"normalPay",label:"已发工资",width:116},
   {key:"note",label:"备注",width:178}, {key:"paid",label:"后续补发",width:108},
@@ -212,13 +125,15 @@ export default function Home() {
   const [filter, setFilter] = useState<"全部" | "未结清" | "已结清">("全部");
   const [query, setQuery] = useState("");
   const [saved, setSaved] = useState(false);
+  const [restoreNotice, setRestoreNotice] = useState("");
+  const [terminationNoticeReasonOverrides, setTerminationNoticeReasonOverrides] = useState<Partial<Record<TerminationNoticeReason, boolean>>>({});
+  const [terminationNoticeRightOverrides, setTerminationNoticeRightOverrides] = useState<Partial<Record<TerminationNoticeRight, boolean>>>({});
   const importInput = useRef<HTMLInputElement>(null);
-  const cutoffTouched = useRef(false);
 
   // Restore browser-only state once after hydration for this local-first app.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!cutoffTouched.current) setSetup(current => current.cutoffDate ? current : {...current,cutoffDate:todayInputValue()});
+    const today = todayInputValue();
     const cached = localStorage.getItem("xinbao-rows");
     if (cached) try {
       const parsed = JSON.parse(cached) as Row[];
@@ -228,29 +143,62 @@ export default function Home() {
     let restoredRule = defaultRule;
     if (cachedRule) try { restoredRule = {...defaultRule, ...JSON.parse(cachedRule)}; setDoubleRule(restoredRule); } catch { /* use defaults */ }
     const cachedMeta = localStorage.getItem("xinbao-meta");
-    if (cachedMeta) try {
-      const meta = JSON.parse(cachedMeta), old = meta.setup || {};
-      setCaseName(meta.caseName || "我的欠款测算");
-      setSetup(normalizeSetup({...old, contractEnd:old.contractEnd || restoredRule.contractEnd, cutoffDate:old.cutoffDate || restoredRule.continuedUntil}));
-      setSelectedClaims(Array.isArray(meta.selectedClaims) ? meta.selectedClaims : ["wage","social","fund","doublePay"]);
-      setFlowStep(meta.flowStep || "results");
-    } catch { /* use defaults */ }
+    if (cachedMeta) {
+      try {
+        const meta = JSON.parse(cachedMeta), old = meta.setup || {};
+        const snapshot = employmentSnapshotFor({...old, cutoffDate:old.cutoffDate || restoredRule.continuedUntil}, today);
+        const normalizedSetup = normalizeSetup({...old, contractEnd:old.contractEnd || restoredRule.contractEnd, cutoffDate:old.cutoffDate || restoredRule.continuedUntil});
+        const rowsCutoffDate = meta.rowsCutoffDate || snapshot.sourceCutoffDate;
+        const staleRows = restoredRowsNeedReview({employmentStatus:normalizedSetup.employmentStatus,rowsCutoffDate,today});
+        setCaseName(meta.caseName || "我的欠款测算");
+        setSetup(normalizedSetup);
+        setSelectedClaims(Array.isArray(meta.selectedClaims) ? meta.selectedClaims : ["wage","social","fund","doublePay"]);
+        setFlowStep(snapshot.needsStatusConfirmation || staleRows ? "basic" : meta.flowStep || "results");
+        if (snapshot.needsStatusConfirmation) setRestoreNotice("这是旧版存档，原统计截止日不能证明已经离职。系统暂按在职处理，请确认任职状态后重新生成明细。");
+        else if (staleRows) setRestoreNotice(`存档明细计算至 ${rowsCutoffDate}，当前在职应计算至 ${today}。为保留你的逐月调整，系统未自动覆盖，请核对后重新生成明细。`);
+      } catch {
+        setSetup(current => ({...current,cutoffDate:today,departureDate:""}));
+      }
+    } else {
+      setSetup(current => ({...current,cutoffDate:today,departureDate:""}));
+    }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const wageEnabled=selectedClaims.includes("wage"), socialEnabled=selectedClaims.includes("social"), fundEnabled=selectedClaims.includes("fund"), doublePayEnabled=selectedClaims.includes("doublePay"), reimbursementEnabled=selectedClaims.includes("reimbursement"), annualLeaveEnabled=selectedClaims.includes("annualLeave"), overtimeEnabled=selectedClaims.includes("overtime"), compTimeEnabled=selectedClaims.includes("compTime"), terminationEnabled=selectedClaims.includes("termination"), workInjuryEnabled=selectedClaims.includes("workInjury");
   const inferredEmploymentMonth=setup.employmentDate.slice(0,7);
   const effectiveSocialStart=setup.socialPaidStartMonth || inferredEmploymentMonth;
-  const effectiveFundStart=setup.fundPaidStartMonth || inferredEmploymentMonth;
+  const hasSocialPaidPeriod=Boolean(setup.socialHasPaid&&effectiveSocialStart&&setup.socialPaidEndMonth);
+  const effectiveFundStart=setup.fundPaidStartMonth || (hasSocialPaidPeriod?effectiveSocialStart:inferredEmploymentMonth);
+  const effectiveFundEnd=setup.fundPaidEndMonth || (hasSocialPaidPeriod?setup.socialPaidEndMonth:"");
+  const socialRates: SocialRates = {pension:Number(setup.socialPensionRate||0),unemployment:Number(setup.socialUnemploymentRate||0),injury:Number(setup.socialInjuryRate||0),maternity:Number(setup.socialMaternityRate||0),medical:Number(setup.socialMedicalRate||0)};
+  const personalSocialRates:SocialRates = {pension:Number(setup.socialPersonalPensionRate||0),unemployment:Number(setup.socialPersonalUnemploymentRate||0),injury:Number(setup.socialPersonalInjuryRate||0),maternity:Number(setup.socialPersonalMaternityRate||0),medical:Number(setup.socialPersonalMedicalRate||0)};
+  const effectiveSocialRate = socialEnabled ? totalEmployerRate(socialRates) : 0;
+  const effectivePersonalSocialRate = socialEnabled ? totalPersonalRate(personalSocialRates) : 0;
+  const effectiveSocialActualBase = socialEnabled&&setup.socialHasPaid ? Number(setup.socialActualBase||0) : 0;
+  const effectiveSocialBase = socialEnabled ? Number(setup.socialBase||setup.contractPay||0) : 0;
+  const effectiveFundBase = fundEnabled ? Number(setup.fundBase||setup.contractPay||0) : 0;
+  const effectiveFundPersonalRate = fundEnabled ? Number(setup.fundPersonalRate||0) : 0;
+  const inferredFundPaidRate = effectiveFundBase&&setup.fundHasPaid ? Number(setup.fundPaid||0)/effectiveFundBase*100 : 0;
+  const effectiveFundRate = fundEnabled ? Math.max(inferredFundPaidRate,Number(setup.fundRate||5)) : 0;
   const effectiveDoubleRule = useMemo(() => doublePayEnabled ? automaticDoubleRuleFor(setup, doubleRule) : defaultRule, [setup, doubleRule, doublePayEnabled]);
-  const doubleById = useMemo(() => new Map(rows.map(row => [row.id, doublePayForRow(row, effectiveDoubleRule)])), [rows, effectiveDoubleRule]);
+  const doubleById = useMemo(() => new Map(rows.map(row => [row.id, doublePayForMonth(row, effectiveDoubleRule)])), [rows, effectiveDoubleRule]);
+  const personalForRow=useMemo(()=>(row:Row)=>personalContributionsForArrears({
+    arrears:wageEnabled?Number(row.arrears||0):0,
+    grossWage:Number(row.duePay||row.contractPay||0),
+    socialBase:socialEnabled?Number(row.socialBase||effectiveSocialBase):0,
+    socialRate:effectivePersonalSocialRate,
+    fundBase:fundEnabled?Number(row.fundBase||effectiveFundBase):0,
+    fundRate:effectiveFundPersonalRate,
+  }), [wageEnabled,socialEnabled,fundEnabled,effectiveSocialBase,effectiveFundBase,effectivePersonalSocialRate,effectiveFundPersonalRate]);
   const totals = useMemo(() => rows.reduce((a, r) => ({
-    normal: a.normal + Number(r.normalPay || 0), paid: a.paid + Number(r.paid || 0),
-    arrears: a.arrears + Number(r.arrears || 0), social: a.social + socialDueFor(r),
-    fund: a.fund + fundDueFor(r), double: a.double + Number(doubleById.get(r.id) || 0),
-    socialActual:a.socialActual+Number(r.socialPaid||0), socialExpected:a.socialExpected+Number(r.socialBase||0)*Number(r.socialRate||0)/100,
-    fundActual:a.fundActual+Number(r.fundPaid||0), fundExpected:a.fundExpected+Number(r.fundBase||0)*Number(r.fundRate||0)/100,
-  }), {normal:0,paid:0,arrears:0,social:0,fund:0,double:0,socialActual:0,socialExpected:0,fundActual:0,fundExpected:0}), [rows, doubleById]);
+    normal:sumMoney([a.normal,r.normalPay]), paid:sumMoney([a.paid,r.paid]),
+    arrears:sumMoney([a.arrears,r.arrears]), social:sumMoney([a.social,socialDueFor(r)]),
+    fund:sumMoney([a.fund,fundDueFor(r)]), double:sumMoney([a.double,doubleById.get(r.id)||0]),
+    socialActual:sumMoney([a.socialActual,r.socialPaid]), socialExpected:sumMoney([a.socialExpected,roundMoney(Number(r.socialBase||0)*Number(r.socialRate||0)/100)]),
+    fundActual:sumMoney([a.fundActual,r.fundPaid]), fundExpected:sumMoney([a.fundExpected,roundMoney(Number(r.fundBase||0)*Number(r.fundRate||0)/100)]),
+    personalSocial:sumMoney([a.personalSocial,personalForRow(r).social]), personalFund:sumMoney([a.personalFund,personalForRow(r).fund]),
+  }), {normal:0,paid:0,arrears:0,social:0,fund:0,double:0,socialActual:0,socialExpected:0,fundActual:0,fundExpected:0,personalSocial:0,personalFund:0}), [rows, doubleById, personalForRow]);
   const wageArrearsMonths = useMemo(() => [...new Set(rows
     .filter(row => Number(row.arrears || 0) > 0 && /^\d{4}-\d{2}$/.test(row.wageMonth))
     .map(row => row.wageMonth))].sort(), [rows]);
@@ -260,23 +208,18 @@ export default function Home() {
       : `${wageArrearsMonths[0]} 至 ${wageArrearsMonths[wageArrearsMonths.length - 1]}`
     : "当前未形成欠薪";
   const reimbursementTotal = reimbursementEnabled&&setup.reimbursementIncluded ? Number(setup.reimbursementAmount||0) : 0;
-  const rowClaimTotal = (row: Row) => (wageEnabled ? Number(row.arrears || 0) : 0) + (socialEnabled ? socialDueFor(row) : 0) + (fundEnabled ? fundDueFor(row) : 0) + (doublePayEnabled ? Number(doubleById.get(row.id) || 0) : 0);
-  const openRows = rows.filter(r => r.status === "未结清").length;
+  const rowClaimTotal = (row: Row) => sumMoney([wageEnabled?row.arrears:0,socialEnabled?socialDueFor(row):0,fundEnabled?fundDueFor(row):0,doublePayEnabled?doubleById.get(row.id)||0:0]);
   const socialMonths = rows.filter(r => socialDueFor(r) > 0).length;
   const fundMonths = rows.filter(r => fundDueFor(r) > 0).length;
   const socialPaidMonths = rows.filter(r => Number(r.socialPaid || 0) > 0).length;
   const fundPaidMonths = rows.filter(r => Number(r.fundPaid || 0) > 0).length;
   const setupMonths = monthCountBetween(setup.employmentDate, setup.cutoffDate);
-  const socialRates: SocialRates = {pension:Number(setup.socialPensionRate||0),unemployment:Number(setup.socialUnemploymentRate||0),injury:Number(setup.socialInjuryRate||0),maternity:Number(setup.socialMaternityRate||0),medical:Number(setup.socialMedicalRate||0)};
-  const effectiveSocialRate = socialEnabled ? totalEmployerRate(socialRates) : 0;
-  const effectiveSocialActualBase = socialEnabled&&setup.socialHasPaid ? Number(setup.socialActualBase||0) : 0;
-  const effectiveSocialBase = socialEnabled ? Number(setup.socialBase||setup.contractPay||0) : 0;
-  const effectiveFundBase = fundEnabled ? Number(setup.fundBase||setup.contractPay||0) : 0;
-  const inferredFundPaidRate = effectiveFundBase&&setup.fundHasPaid ? Number(setup.fundPaid||0)/effectiveFundBase*100 : 0;
-  const effectiveFundRate = fundEnabled ? Math.max(inferredFundPaidRate,Number(setup.fundRate||5)) : 0;
+  const systemDueForRow=(row:Row)=>proratedMonthlyWage({monthlyWage:setup.contractPay,wageMonth:row.wageMonth,employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate});
+  const monthlyWageAdjustedCount=rows.filter(row=>Math.abs(Number(row.duePay||0)-systemDueForRow(row))>=0.01).length;
   const setupSocialMonthly = socialContributionForMonth({expectedBase:effectiveSocialBase,actualBase:effectiveSocialActualBase,rates:socialRates});
   const setupSocialExpectedMonthly = setupSocialMonthly.expected;
   const setupSocialActualMonthly = setupSocialMonthly.actual;
+  const setupFundMonthly = fundContributionForMonth({expectedBase:effectiveFundBase,actualPaid:setup.fundHasPaid?setup.fundPaid:0,rate:effectiveFundRate});
   const annualLeaveStatutoryDays=statutoryAnnualLeaveDays(setup.annualLeaveWorkYears);
   const annualLeaveElapsedDays=currentYearEmploymentDays(setup.employmentDate,setup.cutoffDate);
   const annualLeaveCurrentYearDays=annualLeaveEnabled?proratedAnnualLeaveDays({employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate,cumulativeWorkYears:setup.annualLeaveWorkYears,takenDays:setup.annualLeaveTakenDays}):0;
@@ -294,16 +237,21 @@ export default function Home() {
   const terminationTotal=terminationEnabled?terminationBreakdown.total:0;
   const workInjuryResult=workInjuryScreening({kind:setup.workInjuryKind,commuteResponsibility:setup.workInjuryCommuteResponsibility,incidentDate:setup.workInjuryDate});
   const workInjuryFilingNote=setup.workInjuryEmployerApplied==="yes"?"单位已申请：请保存受理决定、申报材料和后续认定文书。":setup.workInjuryEmployerApplied==="no"?"单位未申请：不要只等待单位处理，注意个人通常为事故后 1 年内的申请期限。":"申报情况不清楚：建议尽快向单位或当地人社部门核实是否已经受理。";
-  const grandTotal=(wageEnabled?totals.arrears:0)+(socialEnabled?totals.social:0)+(fundEnabled?totals.fund:0)+(doublePayEnabled?totals.double:0)+reimbursementTotal+annualLeaveTotal+overtimeTotal+compTimeTotal+terminationTotal;
+  const grossDirectClaims=sumMoney([wageEnabled?totals.arrears:0,doublePayEnabled?totals.double:0,reimbursementTotal,annualLeaveTotal,overtimeTotal,compTimeTotal,terminationTotal]);
+  const personalContributionTotal=sumMoney([totals.personalSocial,totals.personalFund]);
+  const rightsFulfillmentTotal=sumMoney([grossDirectClaims,socialEnabled?totals.social:0,fundEnabled?totals.fund:0]);
+  const toSocialAccount=sumMoney([socialEnabled?totals.social:0,totals.personalSocial]);
+  const toFundAccount=sumMoney([fundEnabled?totals.fund:0,totals.personalFund]);
+  const expectedPersonalActual=roundMoney(Math.max(0,rightsFulfillmentTotal-toSocialAccount-toFundAccount));
   const needsRestDayDistinctConfirmation=overtimeEnabled&&compTimeEnabled&&Number(setup.restDayOvertimeHours)>0&&Number(setup.outstandingCompTimeDays)>0;
-  const visible = rows.filter(r => (filter === "全部" || r.status === filter) && `${r.payDate}${r.note}`.includes(query));
-  const basicReady=Boolean(setup.employmentDate&&setup.cutoffDate&&Number(setup.contractPay)>0&&setup.employmentDate<=setup.cutoffDate);
+  const visible = rows.filter(r => (filter === "全部" || rowSettlementStatus(r) === filter) && `${r.payDate}${r.note}`.includes(query));
+  const basicReady=Boolean(setup.employmentDate&&setup.cutoffDate&&Number(setup.contractPay)>0&&setup.employmentDate<=setup.cutoffDate&&(setup.employmentStatus==="active"||setup.departureDate));
   const firstQuestionMonth=setup.employmentDate.slice(0,7), lastQuestionMonth=setup.cutoffDate.slice(0,7);
   const questionIssues:QuestionIssue[]=[];
   const addQuestionIssue=(id:string,message:string,targetId:string)=>questionIssues.push({id,message,targetId});
   if (wageEnabled) {
     if (!setup.arrearsStartMonth) addQuestionIssue("wage-start","“开始欠薪月份”尚未填写。","question-wage-start");
-    else if (setup.arrearsStartMonth<firstQuestionMonth||setup.arrearsStartMonth>lastQuestionMonth) addQuestionIssue("wage-start","开始欠薪月份必须位于入职月份和统计截止月份之间。","question-wage-start");
+    else if (setup.arrearsStartMonth<firstQuestionMonth||setup.arrearsStartMonth>lastQuestionMonth) addQuestionIssue("wage-start","开始欠薪月份必须位于入职月份和计薪截止月份之间。","question-wage-start");
     if (Number(setup.firstArrearsPaidRate)<0||Number(setup.firstArrearsPaidRate)>100) addQuestionIssue("wage-rate","首个欠薪月已发比例只能填写 0%—100%。","question-wage-rate");
   }
   if (annualLeaveEnabled&&Number(setup.annualLeaveWorkYears)<1) addQuestionIssue("annual-leave-years","累计工作满 1 年后才享受法定年休假，请核对工作年限。","question-annual-leave-years");
@@ -313,22 +261,22 @@ export default function Home() {
   if (doublePayEnabled) {
     if (!setup.contractEnd) addQuestionIssue("contract-end","“合同上写的最后一天”尚未填写。","question-contract-end");
     else if (setup.contractEnd<setup.employmentDate) addQuestionIssue("contract-end","合同期满日不能早于入职日期。","question-contract-end");
-    else if (setup.contractEnd>setup.cutoffDate) addQuestionIssue("contract-end","合同期满日晚于统计截止日期，无法判断到期后持续用工。","question-contract-end");
+    else if (setup.contractEnd>setup.cutoffDate) addQuestionIssue("contract-end","合同期满日晚于计薪截止日期，无法判断到期后持续用工。","question-contract-end");
   }
   if (socialEnabled) {
-    if (effectiveSocialRate<=0||effectiveSocialRate>100) addQuestionIssue("social-rate","五险公司费率合计需大于 0% 且不超过 100%。","question-social-rate");
+    if (effectiveSocialRate<=0||effectiveSocialRate>100) addQuestionIssue("social-rate","社保公司费率合计需大于 0% 且不超过 100%。","question-social-rate");
     if (setup.socialHasPaid) {
       if (effectiveSocialActualBase<=0) addQuestionIssue("social-base","“公司实际申报缴费基数”尚未填写。","question-social-base");
       if (!setup.socialPaidEndMonth) addQuestionIssue("social-period","“社保最后缴到月份”尚未填写。","question-social-end");
-      else if (effectiveSocialStart>setup.socialPaidEndMonth||effectiveSocialStart<firstQuestionMonth||setup.socialPaidEndMonth>lastQuestionMonth) addQuestionIssue("social-period","社保实际缴纳期间必须位于入职月份和统计截止月份之间，且开始月份不能晚于截止月份。","question-social-start");
+      else if (effectiveSocialStart>setup.socialPaidEndMonth||effectiveSocialStart<firstQuestionMonth||setup.socialPaidEndMonth>lastQuestionMonth) addQuestionIssue("social-period","社保实际缴纳期间必须位于入职月份和计薪截止月份之间，且开始月份不能晚于截止月份。","question-social-start");
     }
   }
   if (fundEnabled) {
     if (Number(setup.fundRate)<=0||Number(setup.fundRate)>100) addQuestionIssue("fund-rate","公积金单位比例需大于 0% 且不超过 100%。","question-fund-rate");
     if (setup.fundHasPaid) {
       if (Number(setup.fundPaid)<=0) addQuestionIssue("fund-paid","“公司实际每月缴纳金额”尚未填写。","question-fund-paid");
-      if (!setup.fundPaidEndMonth) addQuestionIssue("fund-period","“公积金最后缴到月份”尚未填写。","question-fund-end");
-      else if (effectiveFundStart>setup.fundPaidEndMonth||effectiveFundStart<firstQuestionMonth||setup.fundPaidEndMonth>lastQuestionMonth) addQuestionIssue("fund-period","公积金实际缴纳期间必须位于入职月份和统计截止月份之间，且开始月份不能晚于截止月份。","question-fund-start");
+      if (!effectiveFundEnd) addQuestionIssue("fund-period","“公积金最后缴到月份”尚未填写。","question-fund-end");
+      else if (effectiveFundStart>effectiveFundEnd||effectiveFundStart<firstQuestionMonth||effectiveFundEnd>lastQuestionMonth) addQuestionIssue("fund-period","公积金实际缴纳期间必须位于入职月份和计薪截止月份之间，且开始月份不能晚于截止月份。","question-fund-start");
     }
   }
   if (reimbursementEnabled&&Number(setup.reimbursementAmount)<=0) addQuestionIssue("reimbursement-amount","“尚未支付的报销金额”尚未填写。","question-reimbursement-amount");
@@ -352,9 +300,43 @@ export default function Home() {
     forcedNoticeSent:setup.forcedNoticeSent,forcedNoticeProof:setup.forcedNoticeProof,
     workInjuryEnabled,
   }) as RightsPlan;
-  const reportMonth=setup.cutoffDate ? setup.cutoffDate.slice(0,7) : "—";
+  const terminationNoticeReasonOptions:{key:TerminationNoticeReason;label:string;description:string;automatic:boolean}[]=[];
+  if (wageEnabled&&totals.arrears>0) terminationNoticeReasonOptions.push({key:"wage",label:"未及时足额支付劳动报酬",description:`系统已测算欠薪 ¥ ${money(totals.arrears)}，默认写入通知。`,automatic:true});
+  if (socialEnabled&&totals.social>0&&!setup.socialHasPaid) terminationNoticeReasonOptions.push({key:"socialUnpaid",label:"未依法缴纳社会保险费",description:"系统记录为未缴社保，默认写入通知；发送前仍需核对官方缴费记录。",automatic:true});
+  if (socialEnabled&&totals.social>0&&setup.socialHasPaid) terminationNoticeReasonOptions.push({key:"socialUnderpaid",label:"社保基数或金额可能不足",description:"各地对基数偏低能否支持被迫解除存在差异，系统不默认勾选。",automatic:false});
+  const terminationNoticeReasons=terminationNoticeReasonOptions.filter(option=>terminationNoticeReasonOverrides[option.key]??option.automatic).map(option=>option.key);
+  const terminationNoticeRightAmounts:Partial<Record<TerminationNoticeRight,number>>={
+    wage:totals.arrears,social:totals.social,fund:totals.fund,
+    reimbursement:Number(setup.reimbursementAmount||0),overtime:overtimeTotal,
+  };
+  const terminationNoticeRightOptions=(Object.keys(TERMINATION_NOTICE_RIGHTS) as TerminationNoticeRight[])
+    .filter(key=>selectedClaims.includes(key as Claim))
+    .map(key=>({key,...TERMINATION_NOTICE_RIGHTS[key],amount:Number(terminationNoticeRightAmounts[key]||0)}));
+  const terminationNoticeRights=terminationNoticeRightOptions.filter(option=>terminationNoticeRightOverrides[option.key]??false).map(option=>option.key);
+  const terminationNoticeDate=setup.terminationNoticeDate||todayInputValue();
+  const terminationNotice=buildTerminationNotice({
+    employeeName:setup.terminationEmployeeName,
+    companyName:setup.terminationCompanyName,
+    employmentDate:setup.employmentDate,
+    noticeDate:terminationNoticeDate,
+    contact:setup.terminationNoticeContact,
+    reasons:terminationNoticeReasons,
+    rights:terminationNoticeRights,
+  });
+  const terminationNoticeBlocked=setup.personalResignationSigned==="yes";
+  const terminationNoticeReady=Boolean(setup.terminationEmployeeName.trim()&&setup.terminationCompanyName.trim()&&terminationNoticeReasons.length&&!terminationNoticeBlocked);
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
-  const toggleClaim=(claim:Claim)=>setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
+  const toggleClaim=(claim:Claim)=>{
+    const isAdding=!selectedClaims.includes(claim);
+    if (isAdding&&claim==="doublePay"&&!setup.contractEnd) {
+      setSetup(current=>{
+        if (current.contractEnd) return current;
+        const inferredStart=current.contractStart||current.employmentDate;
+        return {...current,contractStart:inferredStart,contractEnd:oneYearContractEndFor(inferredStart)};
+      });
+    }
+    setSelectedClaims(current=>current.includes(claim)?current.filter(x=>x!==claim):[...current,claim]);
+  };
   const closeClaim=(claim:Claim)=>setSelectedClaims(current=>current.filter(item=>item!==claim));
   const jumpToQuestionIssue=(targetId:string)=>{
     const target=document.getElementById(targetId);
@@ -370,25 +352,50 @@ export default function Home() {
     setFlowStep("review");
   };
 
-  const update = (id: number, key: keyof Row, value: string) => setRows(prev => prev.map(r => r.id === id ? {
-    ...r, [key]: key === "wageMonth" || key === "payDate" || key === "note" || key === "status" ? value : Number(value),
-    ...(["duePay","normalPay","paid"].includes(String(key)) ? { arrears: Math.max(0, Number(key === "duePay" ? value : r.duePay) - Number(key === "normalPay" ? value : r.normalPay) - Number(key === "paid" ? value : r.paid)) } : {})
-  } : r));
+  const update = (id: number, key: keyof Row, value: string) => setRows(prev => prev.map(r => {
+    if (r.id !== id) return r;
+    const textField = key === "wageMonth" || key === "payDate" || key === "note";
+    const moneyField = ["normalPay","paid","duePay","arrears","contractPay","socialPaid","socialBase","socialDue","fundPaid","fundBase","fundDue"].includes(String(key));
+    const next = {...r,[key]:textField?value:moneyField?roundMoney(Number(value)):Number(value)} as Row;
+    if (["duePay","normalPay","paid"].includes(String(key))) next.arrears=wageArrears(next);
+    next.status=rowSettlementStatus(next);
+    return next;
+  }));
 
-  const rowsWithComputedGaps = () => rows.map(r => ({...r, socialDue:socialDueFor(r), fundDue:fundDueFor(r)}));
-  const save = () => { const persistedSetup={...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}; localStorage.setItem("xinbao-rows", JSON.stringify(rowsWithComputedGaps())); localStorage.setItem("xinbao-double-rule", JSON.stringify(effectiveDoubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({caseName,setup:persistedSetup,selectedClaims,flowStep})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
+  const rowsWithComputedGaps = () => rows.map(r => ({...r,status:rowSettlementStatus(r),socialDue:socialDueFor(r),fundDue:fundDueFor(r)}));
+  const save = () => { const persistedSetup={...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}; localStorage.setItem("xinbao-rows", JSON.stringify(rowsWithComputedGaps())); localStorage.setItem("xinbao-double-rule", JSON.stringify(effectiveDoubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({version:15,caseName,setup:persistedSetup,rowsCutoffDate:setup.cutoffDate,selectedClaims,flowStep})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
   const printReport = () => window.print();
   const addRow = () => setRows(prev => [...prev, { ...(prev[prev.length - 1] || blankRow()), id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"新增欠薪月份", paid:0, status:"未结清", duePay:Number(setup.contractPay || 0), arrears:Number(setup.contractPay || 0), contractPay:Number(setup.contractPay || 0), socialPaid:0, socialBase:effectiveSocialBase, socialRate:effectiveSocialRate, fundPaid:0, fundBase:effectiveFundBase, fundRate:effectiveFundRate }]);
   const remove = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
   const exportCsv = () => {
-    const header = [...fields.map(f => `${f.group ? f.group + "-" : ""}${f.label}`), "未续签双倍工资差额", "合计欠款"];
-    const body = rows.map(r => [...fields.map(f => csvValue(f.key === "socialDue" ? socialDueFor(r) : f.key === "fundDue" ? fundDueFor(r) : r[f.key])), csvValue(doublePayEnabled ? doubleById.get(r.id) || 0 : 0), csvValue(rowClaimTotal(r))]);
-    const csv = "\ufeff" + [header, ...body].map(line => line.map(v => `"${v.replaceAll('"','""')}"`).join(",")).join("\n");
+    const header = [...fields.map(f => `${f.group ? f.group + "-" : ""}${f.label}`), "个人应缴-社保", "个人应缴-公积金", "支付给本人", "缴入社保", "缴入公积金", "未续签双倍工资差额", "权益履行总额"];
+    const body = rows.map(r => { const personal=personalForRow(r), double=doublePayEnabled?Number(doubleById.get(r.id)||0):0; return [...fields.map(f => f.key === "socialDue" ? socialDueFor(r) : f.key === "fundDue" ? fundDueFor(r) : f.key === "status" ? rowSettlementStatus(r) : r[f.key]), personal.social, personal.fund, sumMoney([Math.max(0,Number(r.arrears||0)-personal.total),double]), sumMoney([socialEnabled?socialDueFor(r):0,personal.social]), sumMoney([fundEnabled?fundDueFor(r):0,personal.fund]), double, rowClaimTotal(r)]; });
+    const csv = csvDocument([header, ...body]);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "薪资计算器明细.csv"; a.click();
   };
   const exportData = () => {
-    const data = JSON.stringify({ version:11, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
+    const data = JSON.stringify({ version:15, caseName, setup:{...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}, rowsCutoffDate:setup.cutoffDate, selectedClaims, flowStep, doubleRule:effectiveDoubleRule, rows:rowsWithComputedGaps() }, null, 2);
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"})); a.download = `${caseName || "欠款测算"}.json`; a.click();
+  };
+  const downloadTerminationNotice=(content:string,type:string,extension:string)=>{
+    if (!terminationNoticeReady) return;
+    const href=URL.createObjectURL(new Blob(["\ufeff",content],{type}));
+    const anchor=document.createElement("a");
+    anchor.href=href;
+    anchor.download=`${safeTerminationNoticeFileName({employeeName:setup.terminationEmployeeName,noticeDate:terminationNoticeDate})}.${extension}`;
+    anchor.click();
+    window.setTimeout(()=>URL.revokeObjectURL(href),1000);
+  };
+  const printTerminationNotice=()=>{
+    if (!terminationNoticeReady) return;
+    const popup=window.open("","_blank","width=920,height=820");
+    if (!popup) { alert("浏览器阻止了文书预览窗口，请允许弹出窗口后重试。"); return; }
+    popup.opener=null;
+    popup.document.open();
+    popup.document.write(terminationNotice.html);
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(()=>popup.print(),350);
   };
   const importData = (file?: File) => {
     if (!file) return;
@@ -402,18 +409,31 @@ export default function Home() {
     reader.onload = () => {
       try {
         const data = validateBackupPayload(JSON.parse(String(reader.result))) as {
+          version:number;
           caseName:string;
           setup:LegacyQuickSetup;
+          rowsCutoffDate:string;
           selectedClaims:Claim[];
           doubleRule?:DoublePayRule;
           rows:Row[];
         };
         const importedRule = {...defaultRule, ...(data.doubleRule || {})};
+        const today = todayInputValue();
+        const sourceSetup = {...data.setup, contractEnd:data.setup.contractEnd || importedRule.contractEnd, cutoffDate:data.setup.cutoffDate || importedRule.continuedUntil} as LegacyQuickSetup;
+        const snapshot = employmentSnapshotFor(sourceSetup, today);
+        const normalizedSetup = normalizeSetup(sourceSetup);
+        const rowsCutoffDate = data.rowsCutoffDate || snapshot.sourceCutoffDate;
+        const staleRows = restoredRowsNeedReview({employmentStatus:normalizedSetup.employmentStatus,rowsCutoffDate,today});
         setRows(data.rows.map((row, index) => normalizeRow(row as Row, index)));
         setDoubleRule(importedRule);
-        setSetup(normalizeSetup({...data.setup, contractEnd:data.setup.contractEnd || importedRule.contractEnd, cutoffDate:data.setup.cutoffDate || importedRule.continuedUntil} as LegacyQuickSetup));
+        setSetup(normalizedSetup);
         setSelectedClaims(data.selectedClaims as Claim[]);
-        setFlowStep("results");
+        setTerminationNoticeReasonOverrides({});
+        setTerminationNoticeRightOverrides({});
+        setFlowStep(snapshot.needsStatusConfirmation || staleRows ? "basic" : "results");
+        setRestoreNotice(snapshot.needsStatusConfirmation
+          ? "这是旧版备份，原统计截止日不能证明已经离职。系统暂按在职处理，请确认任职状态后重新生成明细。"
+          : staleRows ? `备份明细计算至 ${rowsCutoffDate}，当前在职应计算至 ${today}。为保留逐月调整，系统未自动覆盖，请核对后重新生成明细。` : "");
         setCaseName(data.caseName);
       } catch (error) {
         alert(error instanceof BackupValidationError ? `导入失败：${error.message}` : "导入失败：文件不是有效的 JSON 备份。");
@@ -423,7 +443,7 @@ export default function Home() {
     reader.readAsText(file);
   };
   const generateRows = () => {
-    if (!setup.employmentDate || !setup.cutoffDate) return alert("请先填写入职日期和统计截止日期。");
+    if (!setup.employmentDate || !setup.cutoffDate) return alert("请先填写入职日期，并确认在职状态或离职日期。");
     const startDate=atMidnight(setup.employmentDate), endDate=atMidnight(setup.cutoffDate);
     if (!startDate || !endDate) return alert("日期格式无法识别，请重新选择。");
     const sy=startDate.getFullYear(), sm=startDate.getMonth()+1, count=monthCountBetween(setup.employmentDate,setup.cutoffDate);
@@ -433,41 +453,35 @@ export default function Home() {
     if (setup.employmentDate && setup.contractEnd && setup.employmentDate > setup.contractEnd) return alert("合同期满日不能早于入职日期。");
     const firstMonth=`${sy}-${String(sm).padStart(2,"0")}`, lastMonth=`${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,"0")}`;
     if (wageEnabled && !setup.arrearsStartMonth) return alert("请填写开始欠薪月份。");
-    if (wageEnabled && setup.arrearsStartMonth && (setup.arrearsStartMonth < firstMonth || setup.arrearsStartMonth > lastMonth)) return alert("开始欠薪月份需位于入职月份和统计截止月份之间。");
+    if (wageEnabled && setup.arrearsStartMonth && (setup.arrearsStartMonth < firstMonth || setup.arrearsStartMonth > lastMonth)) return alert("开始欠薪月份需位于入职月份和计薪截止月份之间。");
     if (reimbursementEnabled && Number(setup.reimbursementAmount||0)<=0) return alert("请填写尚未支付的报销金额。");
     if (annualLeaveEnabled && Number(setup.annualLeaveWorkYears||0)<1) return alert("累计工作满 1 年后才享受法定年休假，请核对累计工作年限。");
     if (overtimeEnabled && Number(setup.weekdayOvertimeHours||0)<=0 && Number(setup.restDayOvertimeHours||0)<=0 && Number(setup.holidayOvertimeHours||0)<=0) return alert("请至少填写一类尚未支付的加班时数。");
     if (compTimeEnabled && Number(setup.outstandingCompTimeDays||0)<=0) return alert("请填写休息日加班尚未补休的天数。");
     if (needsRestDayDistinctConfirmation && !setup.restDayClaimsDistinct) return alert("请确认加班工资与调休折现不是同一批休息日加班，避免重复计算。");
-    if (socialEnabled && effectiveSocialRate<=0) return alert("请至少填写一项五险公司费率。");
+    if (socialEnabled && effectiveSocialRate<=0) return alert("请至少填写一项社保公司费率。");
     if (fundEnabled && Number(setup.fundRate||0)<=0) return alert("请填写当地最低公积金单位比例。");
     const paidPeriods = [
       {enabled:socialEnabled&&setup.socialHasPaid,label:"社保",amount:effectiveSocialActualBase,start:effectiveSocialStart,end:setup.socialPaidEndMonth},
-      {enabled:fundEnabled&&setup.fundHasPaid,label:"公积金",amount:Number(setup.fundPaid||0),start:effectiveFundStart,end:setup.fundPaidEndMonth},
+      {enabled:fundEnabled&&setup.fundHasPaid,label:"公积金",amount:Number(setup.fundPaid||0),start:effectiveFundStart,end:effectiveFundEnd},
     ];
     for (const period of paidPeriods) {
       if (!period.enabled) continue;
       if ((period.start && !period.end) || (!period.start && period.end) || (period.amount > 0 && (!period.start || !period.end))) return alert(`请完整填写${period.label}公司实际缴纳的开始月份和截止月份。`);
-      if (period.start && (period.start > period.end || period.start < firstMonth || period.end > lastMonth)) return alert(`${period.label}公司实际缴纳期间需位于入职月份和统计截止月份之间。`);
+      if (period.start && (period.start > period.end || period.start < firstMonth || period.end > lastMonth)) return alert(`${period.label}公司实际缴纳期间需位于入职月份和计薪截止月份之间。`);
     }
-    const firstPaidRate=Math.min(100,Math.max(0,Number(setup.firstArrearsPaidRate||0)));
-    const generated = Array.from({length:count}, (_,i) => {
-      const date = new Date(sy, sm - 1 + i, 1), wageMonth = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
-      const due = Number(setup.contractPay || 0), beforeArrears=!wageEnabled || wageMonth < setup.arrearsStartMonth, firstArrears=wageEnabled&&wageMonth === setup.arrearsStartMonth;
-      const actual = beforeArrears ? due : firstArrears ? due*firstPaidRate/100 : 0;
-      const arrears=Math.max(0,due-actual);
-      const socialPaid=socialEnabled&&setup.socialHasPaid&&monthIsWithin(wageMonth,effectiveSocialStart,setup.socialPaidEndMonth)?setupSocialActualMonthly:0, socialBase=effectiveSocialBase, socialRate=effectiveSocialRate;
-      const fundPaid=fundEnabled&&setup.fundHasPaid&&monthIsWithin(wageMonth,effectiveFundStart,setup.fundPaidEndMonth)?Number(setup.fundPaid||0):0, fundBase=effectiveFundBase, fundRate=effectiveFundRate;
-      const socialDue=Math.max(0,socialBase*socialRate/100-socialPaid), fundDue=Math.max(0,fundBase*fundRate/100-fundPaid);
-      const note=beforeArrears ? `${date.getMonth()+1}月工资已正常发放` : firstArrears ? `首个欠薪月，已发${firstPaidRate}%` : `${date.getMonth()+1}月工资默认未发`;
-      return { id:Date.now()+i, wageMonth, payDate:"", normalPay:actual, note, paid:0, status:arrears>0||socialDue>0||fundDue>0?"未结清":"已结清", duePay:due, arrears, contractPay:Number(setup.contractPay||0), socialPaid, socialBase, socialRate, socialDue, fundPaid, fundBase, fundRate, fundDue } as Row;
-    });
+    const generated = generateMonthlyLedger({
+      employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate,contractPay:setup.contractPay,wageEnabled,arrearsStartMonth:setup.arrearsStartMonth,firstArrearsPaidRate:setup.firstArrearsPaidRate,
+      social:{enabled:socialEnabled,hasPaid:setup.socialHasPaid,startMonth:effectiveSocialStart,endMonth:setup.socialPaidEndMonth,actualMonthly:setupSocialActualMonthly,base:effectiveSocialBase,rate:effectiveSocialRate},
+      fund:{enabled:fundEnabled,hasPaid:setup.fundHasPaid,startMonth:effectiveFundStart,endMonth:effectiveFundEnd,actualMonthly:setup.fundPaid,base:effectiveFundBase,rate:effectiveFundRate},
+    }) as Row[];
     if (rows.some(r => r.wageMonth || r.duePay || r.normalPay) && !confirm("批量生成会替换当前明细，是否继续？")) return;
     setRows(generated);
+    setRestoreNotice("");
     setFlowStep("results");
     setPrecisionOpen(false);
   };
-  const newCase = () => { if (!confirm("新建测算会清空当前页面数据，建议先导出备份。是否继续？")) return; setRows([blankRow()]); setDoubleRule(defaultRule); setSetup({...defaultSetup,cutoffDate:todayInputValue()}); setSelectedClaims([]); setFlowStep("basic"); setPrecisionOpen(false); setCaseName("我的欠款测算"); localStorage.removeItem("xinbao-rows"); localStorage.removeItem("xinbao-double-rule"); localStorage.removeItem("xinbao-meta"); };
+  const newCase = () => { if (!confirm("新建测算会清空当前页面数据，建议先导出备份。是否继续？")) return; setRows([blankRow()]); setDoubleRule(defaultRule); setSetup({...defaultSetup,cutoffDate:todayInputValue()}); setSelectedClaims([]); setFlowStep("basic"); setPrecisionOpen(false); setCaseName("我的欠款测算"); setRestoreNotice(""); setTerminationNoticeReasonOverrides({}); setTerminationNoticeRightOverrides({}); localStorage.removeItem("xinbao-rows"); localStorage.removeItem("xinbao-double-rule"); localStorage.removeItem("xinbao-meta"); };
 
   return <main className="app-shell">
     <a className="skip-link" href="#calculator">跳到测算表单</a>
@@ -476,26 +490,29 @@ export default function Home() {
       <div className="top-actions"><span className="safe">● 数据仅保存在本机</span><button className="ghost" onClick={newCase}>新建</button><button className="ghost" onClick={()=>importInput.current?.click()}>导入</button><button className="ghost" onClick={exportData}>备份</button><button className="ghost" onClick={exportCsv}>CSV</button>{flowStep==="results"&&<button className="ghost report-export" onClick={printReport}>导出报告</button>}<button className="primary" onClick={save}>{saved ? "已保存 ✓" : "保存"}</button><input ref={importInput} className="file-input" type="file" accept="application/json,.json" onChange={e=>{importData(e.target.files?.[0]);e.target.value=""}}/></div>
     </header>
 
-    <section className="hero">
+    {flowStep==="basic"&&<section className="hero">
       <div className="hero-copy"><p className="eyebrow">WAGE & BENEFITS CALCULATOR / 薪资计算器</p><h1 aria-label="工资、社保与劳动权益一表算清"><span>工资</span><span>社保</span><span className="hero-interrupt" aria-hidden="true"></span><span>权益</span><em>算清</em></h1><p className="intro">无需注册登录。填写任职期间和实际发生事项，即可计算欠薪、社保、公积金、年假、加班、调休、离职经济补偿、未续签双倍工资及报销欠款，并可补充工伤情况初筛、导出测算报告。</p></div>
-      <div className="grand-card">{flowStep === "results" ? <><span>当前合计欠款</span><strong><small>¥</small>{money(grandTotal)}</strong><div><b>{openRows} 个未结清月份</b><i>测算至 {rows.at(-1)?.wageMonth || "—"}</i></div></> : <><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></>}</div>
+      <div className="grand-card"><span>GUIDED MODE / 默认引导模式</span><strong>约 2 分钟</strong><div><b>只问与你有关的问题</b><i>无需登录</i></div></div>
       <a className="hero-scroll" href="#calculator" aria-label="向下滚动，开始引导测算"><span>向下开始测算</span><i aria-hidden="true">↓</i></a>
-    </section>
+    </section>}
 
     <section className="quick-card guided-card" id="calculator">
       <div className="guided-head">
-        <div><p className="eyebrow">GUIDED CALCULATOR / 引导测算</p><h2>{flowStep==="basic"?"先填写三个基础事实":flowStep==="scenario"?"选择要计算的事项":flowStep==="questions"?"只回答与你有关的问题":flowStep==="review"?"核对事实与系统推定":"测算结果已生成"}</h2></div>
+        <div><p className="eyebrow">GUIDED CALCULATOR / 引导测算</p><h2>{flowStep==="basic"?"先确认基础事实":flowStep==="scenario"?"选择要计算的事项":flowStep==="questions"?"只回答与你有关的问题":flowStep==="review"?"核对事实与系统推定":"测算结果已生成"}</h2></div>
         <div className="stepper" aria-label="测算进度">{["basic","scenario","questions","review","results"].map((step,index)=><span key={step} className={flowStep===step?"active":(["basic","scenario","questions","review","results"].indexOf(flowStep)>index?"done":"")}>{index+1}</span>)}</div>
       </div>
 
       {flowStep==="basic"&&<div className="guided-step">
-        <p className="step-intro">不需要先理解专业公式。告诉我们任职期间和月薪，下一步再选择发生了什么。</p>
+        <p className="step-intro">先确认当前是在职还是已离职。系统会以今天或离职日期作为计薪截止日，再按月生成工资明细。</p>
         <div className="basic-fields">
+          <fieldset className="employment-state"><legend>当前任职状态</legend><div role="group" aria-label="当前任职状态"><button type="button" className={setup.employmentStatus==="active"?"active":""} aria-pressed={setup.employmentStatus==="active"} onClick={()=>setSetup(s=>({...s,employmentStatus:"active",departureDate:"",cutoffDate:todayInputValue()}))}>当前在职</button><button type="button" className={setup.employmentStatus==="departed"?"active":""} aria-pressed={setup.employmentStatus==="departed"} onClick={()=>setSetup(s=>({...s,employmentStatus:"departed",cutoffDate:s.departureDate}))}>已经离职</button></div><small>{setup.employmentStatus==="active"?"计薪自动截止到今天":"请填写实际离职日期"}</small></fieldset>
           <label><span>入职日期</span><input type="date" value={setup.employmentDate} onChange={e=>setSetup(s=>({...s,employmentDate:e.target.value,contractStart:s.contractStart||e.target.value}))}/></label>
-          <label><span>统计截止日期</span><input type="date" value={setup.cutoffDate} onChange={e=>{cutoffTouched.current=true; setSetup(s=>({...s,cutoffDate:e.target.value}))}}/><small>默认今天，也可改为离职或测算日期</small></label>
+          {setup.employmentStatus==="departed"?<label><span>离职日期</span><input type="date" value={setup.departureDate} onChange={e=>setSetup(s=>({...s,departureDate:e.target.value,cutoffDate:e.target.value}))}/><small>工资、年假和离职补偿均计算至该日</small></label>:<div className="calculation-cutoff"><span>计薪截止日期</span><output aria-label="计薪截止日期">{setup.cutoffDate||"正在读取今天日期"}</output><small>当前在职，系统按本机今天日期自动计算</small></div>}
           <label className="salary-field"><span>合同月薪</span><div className="money-input salary-input"><input type="number" min="0" value={setup.contractPay||""} placeholder="例如 20,000" onChange={e=>setSetup(s=>({...s,contractPay:Number(e.target.value)}))}/><span className="salary-unit">元/月</span></div><small>劳动合同约定的税前月工资</small></label>
         </div>
-        {setup.employmentDate&&setup.cutoffDate&&setup.employmentDate>setup.cutoffDate&&<p className="inline-error" role="alert">统计截止日期不能早于入职日期。</p>}
+        {restoreNotice&&<p className="inline-hint" role="status">{restoreNotice}</p>}
+        {setup.employmentStatus==="departed"&&!setup.departureDate&&<p className="inline-hint">请填写离职日期，系统会以该日作为计薪截止日期。</p>}
+        {setup.employmentDate&&setup.cutoffDate&&setup.employmentDate>setup.cutoffDate&&<p className="inline-error" role="alert">计薪截止日期不能早于入职日期。</p>}
         <div className="guided-actions"><span></span><button className="next" disabled={!basicReady} onClick={()=>setFlowStep("scenario")}>下一步：选择事项 →</button></div>
       </div>}
 
@@ -544,7 +561,7 @@ export default function Home() {
               <div className="rights-summary compact-summary"><div><span>日工资</span><strong>¥ {money(dailyWage(effectiveCompTimeBase))}</strong></div><div><span>尚未补休</span><strong>{percent(Number(setup.outstandingCompTimeDays||0))} 天</strong></div><div><span>折现金额</span><strong>¥ {money(compTimeTotal)}</strong></div></div>
             </div>
           </article>}
-          {doublePayEnabled&&<article className="question-module"><header><b>2×</b><div><strong>未签订劳动合同或合同到期仍在工作</strong><small>双倍工资只需要合同期满日，统计截止日已在第一步填写</small></div></header><div className="module-fields"><label><span>合同上写的最后一天</span><input id="question-contract-end" aria-invalid={hasQuestionIssue("question-contract-end")} type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/><small>也就是劳动合同期满日；不需要填写合同开始日</small></label></div></article>}
+          {doublePayEnabled&&<article className="question-module"><header><b>2×</b><div><strong>未签订劳动合同或合同到期仍在工作</strong><small>系统先按一年期合同推定到期日，计薪截止日已由任职状态确定</small></div></header><div className="module-fields"><label className="inferred"><span>合同上写的最后一天 <em>{setup.contractEnd===oneYearContractEndFor(setup.contractStart||setup.employmentDate)?"系统推定":"已修改"}</em></span><input id="question-contract-end" aria-invalid={hasQuestionIssue("question-contract-end")} type="date" value={setup.contractEnd} onChange={e=>setSetup(s=>({...s,contractEnd:e.target.value}))}/><small>暂按入职日期 {setup.contractStart||setup.employmentDate||"—"} 作为签约日，自动填写一年期合同的最后一天；请按劳动合同直接修改</small></label></div></article>}
           {terminationEnabled&&<article className="question-module termination-module">
             <header><b>N</b><div><strong>离职经济补偿</strong><small>系统按本单位工龄自动计算 N，两种情形只会计入其中一种</small></div></header>
             <div className="termination-kind" role="group" aria-label="离职经济补偿情形">
@@ -564,6 +581,59 @@ export default function Home() {
                 {setup.forcedNoticeSent==="unknown"&&<p className="termination-status"><b>需要确认：</b>无法确认通知状态时，报告将把被迫离职补偿标记为待核验。</p>}
                 {setup.forcedNoticeSent==="yes"&&setup.forcedNoticeProof!=="yes"&&<p className="termination-status warning"><b>送达证据待补充：</b>已填写发送通知，但尚未确认保留送达证明。</p>}
               </div>}
+              {setup.terminationType==="forced"&&setup.forcedNoticeSent==="no"&&<section className="termination-notice-builder" aria-labelledby="termination-notice-title">
+                <header>
+                  <div><span>通知书生成器</span><h3 id="termination-notice-title">生成解除劳动合同通知书</h3></div>
+                  <p>姓名和公司名称是必填项；系统只把当前测算能够支持的事实带入模板。</p>
+                </header>
+                <div className="termination-notice-layout">
+                  <div className="termination-notice-form">
+                    <div className="termination-notice-fields">
+                      <label><span>劳动者姓名</span><input aria-label="解除通知劳动者姓名" autoComplete="name" value={setup.terminationEmployeeName} placeholder="例如：张三" onChange={e=>setSetup(s=>({...s,terminationEmployeeName:e.target.value}))}/></label>
+                      <label><span>用人单位全称</span><input aria-label="解除通知用人单位全称" value={setup.terminationCompanyName} placeholder="以营业执照或劳动合同为准" onChange={e=>setSetup(s=>({...s,terminationCompanyName:e.target.value}))}/></label>
+                      <label><span>落款日期</span><input aria-label="解除通知落款日期" type="date" value={terminationNoticeDate} onChange={e=>setSetup(s=>({...s,terminationNoticeDate:e.target.value}))}/><small>文书约定自送达公司之日起生效</small></label>
+                      <label><span>联系方式（可选）</span><input aria-label="解除通知联系方式" inputMode="tel" value={setup.terminationNoticeContact} placeholder="手机号或电子邮箱" onChange={e=>setSetup(s=>({...s,terminationNoticeContact:e.target.value}))}/></label>
+                    </div>
+                    <fieldset className="termination-notice-reasons">
+                      <legend>确认写入通知的解除事由</legend>
+                      {terminationNoticeReasonOptions.length?terminationNoticeReasonOptions.map(option=>{
+                        const checked=terminationNoticeReasonOverrides[option.key]??option.automatic;
+                        return <label key={option.key} className={checked?"selected":""}><input type="checkbox" checked={checked} onChange={e=>setTerminationNoticeReasonOverrides(current=>({...current,[option.key]:e.target.checked}))}/><span><strong>{option.label}</strong><small>{option.description}</small></span><i>{option.automatic?"系统推定":"人工复核"}</i></label>;
+                      }):<p>当前测算尚未形成可自动带入的欠薪或未缴社保事实，请不要使用空白解除理由直接发送通知。</p>}
+                    </fieldset>
+                    {terminationNoticeRightOptions.length>0&&<fieldset className="termination-notice-reasons termination-notice-rights">
+                      <legend>选择随通知一并列明的待处理权益</legend>
+                      {terminationNoticeRightOptions.map(option=>{
+                        const checked=terminationNoticeRightOverrides[option.key]??false;
+                        const amountText=option.amount>0?`当前初步测算 ¥ ${money(option.amount)}；最终以证据、官方核定或有权机关认定为准。`:"已从前一步选择带入；生成测算明细后请再次核对事实和金额。";
+                        return <label key={option.key} className={checked?"selected":""}><input aria-label={`通知列明：${option.label}`} type="checkbox" checked={checked} onChange={e=>setTerminationNoticeRightOverrides(current=>({...current,[option.key]:e.target.checked}))}/><span><strong>{option.label}</strong><small>{amountText}</small></span><i>前序已选</i></label>;
+                      })}
+                      <p>本清单用于列明希望公司核对处理的事项，不会自动把公积金、报销或加班争议认定为第 38 条解除理由。</p>
+                    </fieldset>}
+                    {terminationNoticeBlocked&&<p className="termination-notice-lock" role="alert"><b>暂不提供下载：</b>你已选择“提交个人原因辞职或签署离职协议”，与第38条解除主张可能冲突，请先让律师或法律援助机构复核已有文件。</p>}
+                    {!terminationNoticeBlocked&&(!setup.terminationEmployeeName.trim()||!setup.terminationCompanyName.trim()||!terminationNoticeReasons.length)&&<p className="termination-notice-help">填写姓名、公司全称并至少确认一项解除事由后，即可下载。所有内容只在本机生成。</p>}
+                    <div className="termination-notice-actions">
+                      <button type="button" disabled={!terminationNoticeReady} onClick={()=>downloadTerminationNotice(terminationNotice.markdown,"text/markdown;charset=utf-8","md")}>下载 Markdown</button>
+                      <button type="button" disabled={!terminationNoticeReady} onClick={()=>downloadTerminationNotice(terminationNotice.html,"application/msword;charset=utf-8","doc")}>下载 Word（.doc）</button>
+                      <button type="button" className="primary" disabled={!terminationNoticeReady} onClick={printTerminationNotice}>生成 PDF</button>
+                    </div>
+                    <p className="termination-notice-footnote">“生成 PDF”会打开系统打印窗口，请选择“存储为 PDF”。建议将通知书通过 EMS、公司邮箱或企业通讯工具送达并保留正文、寄件凭证和签收记录。<a href="https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_0abfdd261c03417b949df19d869add8d.html" target="_blank" rel="noreferrer">核对《劳动合同法》原文</a></p>
+                  </div>
+                  <article className="termination-notice-preview" aria-label="解除劳动合同通知书预览">
+                    <span>DOCUMENT PREVIEW / 文书预览</span>
+                    <h4>解除劳动合同通知书</h4>
+                    <b>致：{terminationNotice.company}</b>
+                    <p>{terminationNotice.intro}</p>
+                    <h5>一、解除事由</h5>
+                    <ol>{terminationNotice.reasonParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol>
+                    {terminationNotice.rightsParagraphs.length>0&&<><h5>二、随通知一并列明的待处理权益事项</h5><ol>{terminationNotice.rightsParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol></>}
+                    <h5>{terminationNotice.rightsParagraphs.length>0?"三":"二"}、解除通知与后续事项</h5>
+                    <p>{terminationNotice.effective}</p>
+                    <ol>{terminationNotice.requests.map((request,index)=><li key={request}>{index+1}. {request}</li>)}</ol>
+                    <div><p>通知人：{terminationNotice.employee}</p><p>日期：{terminationNoticeDate}</p></div>
+                  </article>
+                </div>
+              </section>}
               <div className="rights-summary termination-summary"><div><span>系统计算 N</span><strong>{percent(terminationBreakdown.rawN)}</strong></div><div><span>N 部分采用基数</span><strong>¥ {money(terminationBreakdown.nMonthlyBase)}</strong></div><div><span>额外月数 X</span><strong>{terminationBreakdown.extraMonths}</strong></div><div><span>补偿测算合计</span><strong>¥ {money(terminationTotal)}</strong></div></div>
               <p className="termination-formula">N 部分：{percent(terminationBreakdown.appliedN)} × ¥ {money(terminationBreakdown.nMonthlyBase)} = ¥ {money(terminationBreakdown.economic)}{setup.terminationType==="layoff"&&<>；X 部分：{terminationBreakdown.extraMonths} × ¥ {money(terminationBreakdown.extraMonthlyBase)} = ¥ {money(terminationBreakdown.extra)}</>}</p>
             </div>
@@ -584,28 +654,35 @@ export default function Home() {
             </div>
           </article>}
           {socialEnabled&&<article className="question-module">
-            <header><b>社</b><div><strong>社保公司部分</strong><small>填写公司实际申报基数，系统按五险费率自动算出实缴和漏缴</small></div></header>
+            <header><b>社</b><div><strong>社会保险</strong><small>分别设置公司与个人比例，测算补缴差额及个人应缴部分</small></div></header>
             <div className="has-paid"><span>公司实际缴纳过社保吗？</span><button className={!setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:false,socialPaid:0,socialActualBase:0,socialPaidEndMonth:""}))}>没有</button><button className={setup.socialHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,socialHasPaid:true}))}>缴纳过</button></div>
             <div className="module-fields">
               <label><span>公司实际申报缴费基数</span><div className="money-input"><i>¥</i><input id="question-social-base" aria-invalid={hasQuestionIssue("question-social-base")} type="number" min="0" disabled={!setup.socialHasPaid} value={setup.socialActualBase||""} placeholder={setup.socialHasPaid?"例如 4,986":"未缴为 0"} onChange={e=>setSetup(s=>({...s,socialActualBase:Number(e.target.value)}))}/></div><small>可在社保缴费记录中查看“缴费工资”或“申报基数”</small></label>
               {setup.socialHasPaid&&<><label><span>最后缴到哪个月？</span><input id="question-social-end" aria-invalid={hasQuestionIssue("question-social-end")} type="month" value={setup.socialPaidEndMonth} onChange={e=>setSetup(s=>({...s,socialPaidEndMonth:e.target.value}))}/></label><label className="inferred"><span>从哪个月开始缴？ <em>系统推定</em></span><input id="question-social-start" aria-invalid={hasQuestionIssue("question-social-start")} type="month" value={effectiveSocialStart} onChange={e=>setSetup(s=>({...s,socialPaidStartMonth:e.target.value}))}/><small>根据入职月份推定，可修改</small></label></>}
-              <div className="social-rates"><div className="social-rates-head"><span>五险公司费率（均可修改）</span><strong>合计 {percent(effectiveSocialRate)}%</strong></div><div className="social-rate-grid">{([
-                ["养老保险","socialPensionRate"],["失业保险","socialUnemploymentRate"],["工伤保险","socialInjuryRate"],["生育保险","socialMaternityRate"],["医疗保险","socialMedicalRate"],
-              ] as const).map(([label,key],index)=><label key={key}><span>{label}</span><div className="money-input compact"><i>%</i><input id={index===0?"question-social-rate":undefined} aria-invalid={index===0&&hasQuestionIssue("question-social-rate")} aria-label={`${label}公司费率`} type="number" min="0" max="100" step="0.1" value={setup[key] ?? ""} onChange={e=>setSetup(s=>({...s,[key]:Number(e.target.value)}))}/></div></label>)}</div><div className="rate-guide social-guide"><b>默认参考比例</b><span>各地、年度和行业费率可能不同；医疗与生育合并征收的地区请按当地口径填写，避免重复计算。</span></div></div>
-              <div className="rate-formula social-formula"><div><small>公司实际缴纳 = 实际申报基数 × 五险公司费率合计</small><strong>¥ {money(setupSocialActualMonthly)}</strong><span>¥ {money(effectiveSocialActualBase)} × {percent(effectiveSocialRate)}%</span></div><i>对比</i><div><small>应缴金额 = 应缴测算基数 × 五险公司费率合计</small><strong>¥ {money(setupSocialExpectedMonthly)}</strong><span>¥ {money(effectiveSocialBase)} × {percent(effectiveSocialRate)}%</span></div><i>差额</i><div className="applied"><small>每月少缴</small><strong>¥ {money(setupSocialMonthly.gap)}</strong><span>{setup.socialHasPaid?"已自动抵扣实际缴纳":"未缴月份按全额计算"}</span></div></div>
+              <div className="social-rates"><div className="social-rates-head"><span>社保公司费率（医保含生育，均可修改）</span><strong>合计 {percent(effectiveSocialRate)}%</strong></div><div className="social-rate-grid">{([
+                ["养老保险","socialPensionRate"],["失业保险","socialUnemploymentRate"],["工伤保险","socialInjuryRate"],["职工医保（含生育）","socialMedicalRate"],
+              ] as const).map(([label,key],index)=><label key={key}><span>{label}</span><div className="money-input compact"><i>%</i><input id={index===0?"question-social-rate":undefined} aria-invalid={index===0&&hasQuestionIssue("question-social-rate")} aria-label={`${label}公司费率`} type="number" min="0" max="100" step="0.1" value={setup[key] ?? ""} onChange={e=>setSetup(s=>({...s,[key]:Number(e.target.value),socialMaternityRate:0}))}/></div></label>)}</div><div className="injury-rate-guide"><b>工伤保险行业基准费率</b><div className="injury-rate-presets">{([0.2,0.4,0.7,0.9,1.1,1.3,1.6,1.9] as const).map((rate,index)=><button type="button" key={rate} className={Number(setup.socialInjuryRate)===rate?"active":""} aria-pressed={Number(setup.socialInjuryRate)===rate} onClick={()=>setSetup(s=>({...s,socialInjuryRate:rate}))}>{index+1} 类 · {rate}%</button>)}</div><span>先按单位所属行业选择基准，再按单位实际浮动档次修正；0.84% 不是杭州通用费率。</span></div><div className="rate-guide social-guide"><b>杭州企业职工参考（核对至 2026-07-18）</b><span>养老 16%；失业常规单位 1.5%；职工医保（含生育）9.9%。工伤按行业类别和浮动档次核定，请以单位缴费明细为准。</span></div></div>
+              <div className="social-rates personal-social-rates"><div className="social-rates-head"><span>社保个人费率（医保含生育，均可修改）</span><strong>合计 {percent(effectivePersonalSocialRate)}%</strong></div><div className="social-rate-grid">{([
+                ["养老保险","socialPersonalPensionRate"],["失业保险","socialPersonalUnemploymentRate"],["工伤保险","socialPersonalInjuryRate"],["职工医保（含生育）","socialPersonalMedicalRate"],
+              ] as const).map(([label,key])=><label key={key}><span>{label}</span><div className="money-input compact"><i>%</i><input aria-label={`${label}个人费率`} type="number" min="0" max="100" step="0.1" value={setup[key] ?? ""} onChange={e=>setSetup(s=>({...s,[key]:Number(e.target.value),socialPersonalMaternityRate:0}))}/></div></label>)}</div><div className="rate-guide social-guide"><b>杭州个人参考（核对至 2026-07-18）</b><span>养老 8%、失业 0.5%、职工医保 2%；工伤及生育不由个人另行缴费，请按本人缴费明细修正。</span></div></div>
+              <div className="rate-formula social-formula"><div><small>公司实际缴纳 = 实际申报基数 × 社保公司费率合计</small><strong>¥ {money(setupSocialActualMonthly)}</strong><span>¥ {money(effectiveSocialActualBase)} × {percent(effectiveSocialRate)}%</span></div><i>对比</i><div><small>应缴金额 = 应缴测算基数 × 社保公司费率合计</small><strong>¥ {money(setupSocialExpectedMonthly)}</strong><span>¥ {money(effectiveSocialBase)} × {percent(effectiveSocialRate)}%</span></div><i>差额</i><div className="applied"><small>每月少缴</small><strong>¥ {money(setupSocialMonthly.gap)}</strong><span>{setup.socialHasPaid?"已自动抵扣实际缴纳":"未缴月份按全额计算"}</span></div></div>
+              <p className="base-inference-note"><b>缴费基数默认使用工资推定：</b>当前以合同月薪作为缺省值；通常还需结合本人上年度月平均工资（新入职人员结合起薪月工资）及参保地当年度基数上下限修正。</p>
             </div>
-            <details className="advanced-base"><summary>修改应缴测算基数</summary><label className="inferred"><span>依法应缴测算基数 <em>{setup.socialBase?"已修改":"合同月薪"}</em></span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,socialBase:Number(e.target.value)}))}/></div><small>默认以合同月薪测算公司本应申报的基数；可按当地上下限或经办机构核定结果修改</small></label></details>
+            <details className="advanced-base"><summary>修改应缴测算基数</summary><label className="inferred"><span>依法应缴测算基数 <em>{setup.socialBase?"已修改":"工资推定"}</em></span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.socialBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,socialBase:Number(e.target.value)}))}/></div><small>默认以合同月薪作工资推定；应结合本人上年度月平均工资、新入职起薪月工资及当地上下限修正，最终以经办机构核定为准</small></label></details>
           </article>}
           {fundEnabled&&<article className="question-module">
             <header><b>积</b><div><strong>公积金公司部分</strong><small>只填实际金额，系统自动反推比例并按最低比例兜底</small></div></header>
             <div className="has-paid"><span>公司实际缴纳过公积金吗？</span><button className={!setup.fundHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,fundHasPaid:false,fundPaid:0,fundPaidEndMonth:""}))}>没有</button><button className={setup.fundHasPaid?"active":""} onClick={()=>setSetup(s=>({...s,fundHasPaid:true}))}>缴纳过</button></div>
             <div className="module-fields">
               <label><span>公司实际每月缴纳金额</span><div className="money-input"><i>¥</i><input id="question-fund-paid" aria-invalid={hasQuestionIssue("question-fund-paid")} type="number" min="0" disabled={!setup.fundHasPaid} value={setup.fundPaid||""} placeholder={setup.fundHasPaid?"填写单位缴存金额":"未缴为 0"} onChange={e=>setSetup(s=>({...s,fundPaid:Number(e.target.value)}))}/></div><small>只填单位部分，不含个人缴存</small></label>
-              {setup.fundHasPaid&&<><label><span>最后缴到哪个月？</span><input id="question-fund-end" aria-invalid={hasQuestionIssue("question-fund-end")} type="month" value={setup.fundPaidEndMonth} onChange={e=>setSetup(s=>({...s,fundPaidEndMonth:e.target.value}))}/></label><label className="inferred"><span>从哪个月开始缴？ <em>系统推定</em></span><input id="question-fund-start" aria-invalid={hasQuestionIssue("question-fund-start")} type="month" value={effectiveFundStart} onChange={e=>setSetup(s=>({...s,fundPaidStartMonth:e.target.value}))}/><small>根据入职月份推定，可修改</small></label></>}
+              {setup.fundHasPaid&&<><label className="inferred"><span>最后缴到哪个月？ {hasSocialPaidPeriod&&!setup.fundPaidEndMonth&&<em>沿用社保</em>}{setup.fundPaidEndMonth&&<em>已修改</em>}</span><input id="question-fund-end" aria-invalid={hasQuestionIssue("question-fund-end")} type="month" value={effectiveFundEnd} onChange={e=>setSetup(s=>({...s,fundPaidEndMonth:e.target.value}))}/><small>{hasSocialPaidPeriod&&!setup.fundPaidEndMonth?"已带入社保最后缴费月份，可修改":"请按公积金缴存明细填写"}</small></label><label className="inferred"><span>从哪个月开始缴？ <em>{setup.fundPaidStartMonth?"已修改":hasSocialPaidPeriod?"沿用社保":"系统推定"}</em></span><input id="question-fund-start" aria-invalid={hasQuestionIssue("question-fund-start")} type="month" value={effectiveFundStart} onChange={e=>setSetup(s=>({...s,fundPaidStartMonth:e.target.value}))}/><small>{hasSocialPaidPeriod&&!setup.fundPaidStartMonth?"已带入社保开始缴费月份，可修改":"根据入职月份推定，可修改"}</small></label></>}
               <label className="rate-field"><span>当地最低单位比例（可修改）</span><div className="rate-presets">{[5,7,10,12].map(rate=><button key={rate} className={setup.fundRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,fundRate:rate}))}>{rate}%</button>)}</div><div className="money-input compact"><i>%</i><input id="question-fund-rate" aria-invalid={hasQuestionIssue("question-fund-rate")} type="number" min="0.01" max="100" step="0.1" value={setup.fundRate||""} onChange={e=>setSetup(s=>({...s,fundRate:Number(e.target.value)}))}/></div><div className="rate-guide"><b>单位缴存比例法定范围 5%–12%（普通情形）</b><span>默认最低 5%；如当地现行规则或获批情形不同，可手工修改。</span></div></label>
+              <label className="rate-field personal-fund-rate"><span>个人缴存比例（可修改）</span><div className="rate-presets">{[5,7,10,12].map(rate=><button key={rate} className={setup.fundPersonalRate===rate?"active":""} onClick={()=>setSetup(s=>({...s,fundPersonalRate:rate}))}>{rate}%</button>)}</div><div className="money-input compact"><i>%</i><input aria-label="公积金个人缴存比例" type="number" min="0" max="100" step="0.1" value={setup.fundPersonalRate??""} onChange={e=>setSetup(s=>({...s,fundPersonalRate:Number(e.target.value)}))}/></div><div className="rate-guide"><b>用于估算个人应缴部分</b><span>个人缴存比例通常与单位比例一致，但仍以缴存地规则和实际缴存明细为准。</span></div></label>
               <div className="rate-formula"><div><small>实际缴纳金额 ÷ 测算基数</small><strong>{percent(inferredFundPaidRate)}%</strong><span>反推实缴比例</span></div><i>与</i><div><small>当地最低比例</small><strong>{percent(Number(setup.fundRate||5))}%</strong><span>可手工修改</span></div><i>取高</i><div className="applied"><small>系统采用比例</small><strong>{percent(effectiveFundRate)}%</strong><span>{effectiveFundRate>inferredFundPaidRate?"已按最低比例兜底":"按实缴比例计算"}</span></div></div>
+              <div className="rate-formula fund-formula"><div><small>公司实际缴纳 = 填写的单位月缴金额</small><strong>¥ {money(setupFundMonthly.actual)}</strong><span>{setup.fundHasPaid?"来自实际缴存明细":"未缴为 ¥ 0.00"}</span></div><i>对比</i><div><small>应缴金额 = 工资推定基数 × 系统采用比例</small><strong>¥ {money(setupFundMonthly.expected)}</strong><span>¥ {money(effectiveFundBase)} × {percent(setupFundMonthly.rate)}%</span></div><i>差额</i><div className="applied"><small>每月少缴</small><strong>¥ {money(setupFundMonthly.gap)}</strong><span>{setup.fundHasPaid?"已自动抵扣实际缴纳":"未缴月份按全额计算"}</span></div></div>
+              <p className="base-inference-note"><b>缴费基数默认使用工资推定：</b>当前以合同月薪作为缺省值；通常还需结合本人上年度月平均工资（新入职人员结合起薪月工资）及缴存地当年度基数上下限修正。</p>
             </div>
-            <details className="advanced-base"><summary>修改测算基数</summary><label className="inferred"><span>公积金测算基数 <em>{setup.fundBase?"已修改":"合同月薪"}</em></span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.fundBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,fundBase:Number(e.target.value)}))}/></div><small>未填写公司缴纳基数时，一律以合同月薪作为缺省测算基数；可在此修改，最终以缴存地核定为准</small></label></details>
+            <details className="advanced-base"><summary>修改测算基数</summary><label className="inferred"><span>公积金测算基数 <em>{setup.fundBase?"已修改":"工资推定"}</em></span><div className="money-input"><i>¥</i><input type="number" min="0" value={setup.fundBase||""} placeholder={`默认按合同月薪 ${setup.contractPay||0}`} onChange={e=>setSetup(s=>({...s,fundBase:Number(e.target.value)}))}/></div><small>默认以合同月薪作工资推定；应结合本人上年度月平均工资、新入职起薪月工资及当地上下限修正，最终以缴存地核定为准</small></label></details>
           </article>}
           {reimbursementEnabled&&<article className="question-module reimbursement-module">
             <header><b>报</b><div><strong>报销费用未支付</strong><small>填写公司尚未支付的报销金额，可选择是否进入本次合计</small></div></header>
@@ -624,22 +701,46 @@ export default function Home() {
       </div>}
 
       {flowStep==="review"&&<div className="guided-step review-step">
-        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · 月薪 ¥ {money(setup.contractPay)}</strong><p>统计至 {setup.cutoffDate}，共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>金额类事项进入合计；工伤模块仅作资格和期限初筛</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{socialEnabled?`社保应缴基数 ¥ ${money(effectiveSocialBase)}，实缴基数 ¥ ${money(effectiveSocialActualBase)}，五险合计 ${percent(effectiveSocialRate)}%；`:""}{fundEnabled?`公积金 ¥ ${money(effectiveFundBase)} × ${percent(effectiveFundRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{terminationEnabled?`离职补偿按 ${setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}，N=${percent(terminationBreakdown.appliedN)}；`:""}{workInjuryEnabled?`工伤初筛：${workInjuryResult.title}（不计入合计）；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
-        {(socialEnabled||fundEnabled)&&<div className="policy-warning"><b>缺省测算口径</b><span>{socialEnabled?"社保应缴基数未修改时按合同月薪，实际缴纳金额由公司申报基数乘以五险公司费率合计得出；五险费率可逐项修改。":""}{socialEnabled&&fundEnabled?" ":""}{fundEnabled?"公积金仍采用实缴金额反推比例与当地最低比例取高。":""}实际基数与比例以参保地现行规定和经办机构核定为准。</span></div>}
+        <div className="review-grid"><article><span>你填写的事实</span><strong>{setup.employmentDate} 入职 · {setup.employmentStatus==="active"?"当前在职":`${setup.departureDate} 离职`}</strong><p>合同月薪 ¥ {money(setup.contractPay)} · 计薪至 {setup.cutoffDate} · 共 {setupMonths} 个自然月</p></article><article><span>本次测算事项</span><strong>{claimOptions.filter(x=>selectedClaims.includes(x.key)).map(x=>x.title).join("、")}</strong><p>金额类事项进入合计；工伤模块仅作资格和期限初筛</p></article><article className="assumptions"><span>系统推定与计算依据</span><strong>{doublePayEnabled?`合同期满日 ${setup.contractEnd}`:"按本次所选事项计算"}</strong><p>{wageEnabled?"首尾月先按自然日在职比例预填，可在结果页逐月调整；":""}{socialEnabled?`社保工资推定基数 ¥ ${money(effectiveSocialBase)}，公司比例 ${percent(effectiveSocialRate)}%，个人比例 ${percent(effectivePersonalSocialRate)}%；`:""}{fundEnabled?`公积金工资推定基数 ¥ ${money(effectiveFundBase)}，单位比例 ${percent(effectiveFundRate)}%，个人比例 ${percent(effectiveFundPersonalRate)}%；`:""}{annualLeaveEnabled?`年假 ${annualLeaveUnusedDays} 天 × 日工资 × 200%；`:""}{overtimeEnabled?`加班按 150% / 200% / 300%；`:""}{compTimeEnabled?`未补休 ${percent(setup.outstandingCompTimeDays)} 天 × 200%；`:""}{terminationEnabled?`离职补偿按 ${setup.terminationType==="forced"?"N":`N+${terminationBreakdown.extraMonths}`}，N=${percent(terminationBreakdown.appliedN)}；`:""}{workInjuryEnabled?`工伤初筛：${workInjuryResult.title}（不计入合计）；`:""}{reimbursementEnabled?`报销 ¥ ${money(Number(setup.reimbursementAmount||0))}（${setup.reimbursementIncluded?"计入合计":"仅记录"}）`:""}</p></article></div>
+        {(socialEnabled||fundEnabled)&&<div className="policy-warning"><b>工资推定基数需要复核</b><span>未手工修改时，系统暂以合同月薪作为社保和公积金缴费基数。实际通常需结合本人上年度月平均工资（新入职人员结合起薪月工资）以及参保、缴存地当年度基数上下限修正；最终以官方明细和经办机构核定为准。</span></div>}
         <label className="review-name"><span>测算名称（可选）</span><input value={caseName} onChange={e=>setCaseName(e.target.value)} /></label>
         <div className="guided-actions"><button className="back" onClick={()=>setFlowStep("questions")}>← 返回修改</button><button className="next generate-result" onClick={generateRows}>确认并生成结果 →</button></div>
       </div>}
 
-      {flowStep==="results"&&<div className="guided-step result-ready"><div><span>已按 {rows.length} 个月生成测算</span><strong>当前合计 ¥ {money(grandTotal)}</strong><small>可返回引导修改条件，或展开精算明细逐月调整</small></div><button className="back" onClick={()=>setFlowStep("questions")}>修改测算条件</button></div>}
+      {flowStep==="results"&&<div className="guided-step result-ready"><div><span>已计算至 {setup.cutoffDate} · 共 {rows.length} 个月</span><strong>权益履行总额 ¥ {money(rightsFulfillmentTotal)}</strong><small>{setup.employmentStatus==="active"?"当前在职，截止日自动采用今天":"已按离职日期截止"}；特殊月份可在下方逐月调整</small></div><button className="back" onClick={()=>setFlowStep("basic")}>修改测算条件</button></div>}
     </section>
 
     {flowStep === "results" && <>
+    {wageEnabled&&<section className="monthly-wage-card" aria-labelledby="monthly-wage-title">
+      <header><div><p className="eyebrow">MONTHLY WAGE / 月度应发</p><h2 id="monthly-wage-title">按月调整应发工资</h2><p>首月和截止月先按自然日在职天数比例预填。请假、病假、缺勤、奖金或工资变动等特殊情况，请直接按工资条和考勤修正对应月份。</p></div><span>{monthlyWageAdjustedCount?`已调整 ${monthlyWageAdjustedCount} 个月`:"尚未手工调整"}</span></header>
+      <div className="monthly-wage-list">{rows.map(row=>{const systemDue=systemDueForRow(row),span=monthlyEmploymentSpan({wageMonth:row.wageMonth,employmentDate:setup.employmentDate,cutoffDate:setup.cutoffDate}),adjusted=Math.abs(Number(row.duePay||0)-systemDue)>=0.01;return <article key={row.id} className={adjusted?"adjusted":""}>
+        <div className="monthly-wage-month"><strong>{row.wageMonth||"未填写月份"}</strong><small>{span.employedDays<span.calendarDays?`在职 ${span.employedDays}/${span.calendarDays} 个自然日`:`整月预填 ¥ ${money(systemDue)}`}</small></div>
+        <label><span>本月应发工资</span><div className="monthly-money-input"><i>¥</i><input aria-label={`${row.wageMonth} 应发工资`} type="number" min="0" step="0.01" value={row.duePay} onChange={e=>update(row.id,"duePay",e.target.value)}/></div></label>
+        <label className="monthly-wage-note"><span>情况说明</span><input aria-label={`${row.wageMonth} 工资调整说明`} value={row.note} placeholder="例如：事假 2 天、病假工资" onChange={e=>update(row.id,"note",e.target.value)}/></label>
+        <div className="monthly-wage-result"><small>当前欠薪</small><strong>¥ {money(Number(row.arrears||0))}</strong>{adjusted?<button type="button" aria-label={`恢复 ${row.wageMonth} 系统预填工资`} onClick={()=>update(row.id,"duePay",String(systemDue))}>恢复预填</button>:<span>系统预填</span>}</div>
+      </article>})}</div>
+      <p className="monthly-wage-footnote">自然日折算仅用于生成可编辑的初始数值，不代表唯一工资核算规则；日工资、请假扣款和奖金口径应以劳动合同、工资制度、考勤与当地规则为准。调整会立即更新欠薪合计、资金去向、备份、CSV 和导出报告。</p>
+    </section>}
+    <section className="settlement-overview" aria-label="权益履行与资金去向">
+      <header><div><p className="eyebrow">SETTLEMENT ALLOCATION / 履行分配</p><h2>权益履行总额与资金去向</h2></div><p>个人应缴部分从尚欠税前工资中估算代扣，转入对应账户；不会在总额中重复相加。</p></header>
+      <div className="settlement-kpis">
+        <article><span>权益履行总额</span><strong>¥ {money(rightsFulfillmentTotal)}</strong><small>单位为完整履行本次测算项目需要承担或划转的总额</small></article>
+        <article><span>个人应缴部分</span><strong>¥ {money(personalContributionTotal)}</strong><small>社保 ¥ {money(totals.personalSocial)} · 公积金 ¥ {money(totals.personalFund)}</small></article>
+        <article><span>预计个人实际取得</span><strong>¥ {money(expectedPersonalActual)}</strong><small>支付给本人的预计金额，尚未扣除个人所得税</small></article>
+      </div>
+      <div className="fund-flow" aria-label="资金去向明细">
+        <div><b>01</b><span>支付给本人</span><strong>¥ {money(expectedPersonalActual)}</strong><small>税前欠薪扣个人应缴后，加其他直接支付项目</small></div>
+        <div><b>02</b><span>缴入社保</span><strong>¥ {money(toSocialAccount)}</strong><small>个人应缴 ¥ {money(totals.personalSocial)} + 公司尚欠 ¥ {money(socialEnabled?totals.social:0)}</small></div>
+        <div><b>03</b><span>缴入公积金</span><strong>¥ {money(toFundAccount)}</strong><small>个人应缴 ¥ {money(totals.personalFund)} + 公司尚欠 ¥ {money(fundEnabled?totals.fund:0)}</small></div>
+      </div>
+      <p className="settlement-note">首个部分欠薪月按未付工资占应发工资的比例估算个人应缴，避免对已发工资重复扣减。若工资条显示个人部分已实际代扣、代缴，或当地核定基数不同，请在精算前据实修正。</p>
+    </section>
     <section className="metrics guided-metrics" aria-label="测算汇总">
-      {wageEnabled&&<article><span className="metric-icon wage">工</span><div><small>欠薪合计</small><strong>¥ {money(totals.arrears)}</strong><p className="wage-period"><span><b>实际欠薪期间</b><time>{wageArrearsPeriod}</time></span><span>{wageArrearsMonths.length ? `共 ${wageArrearsMonths.length} 个欠薪月份` : "以最终逐月明细为准"}<br/>占总欠款 {percent(grandTotal ? totals.arrears / grandTotal * 100 : 0)}%</span></p></div></article>}
+      {wageEnabled&&<article><span className="metric-icon wage">工</span><div><small>税前欠薪（个人应缴前）</small><strong>¥ {money(totals.arrears)}</strong><p className="wage-period"><span><b>实际欠薪期间</b><time>{wageArrearsPeriod}</time></span><span>{wageArrearsMonths.length ? `共 ${wageArrearsMonths.length} 个欠薪月份` : "以最终逐月明细为准"}<br/>占权益履行总额 {percent(rightsFulfillmentTotal ? totals.arrears / rightsFulfillmentTotal * 100 : 0)}%</span></p></div></article>}
       {socialEnabled&&<article><span className="metric-icon social">社</span><div><small>社保公司尚欠补缴</small><strong>¥ {money(totals.social)}</strong><p>实缴 {socialPaidMonths} 个月 · 尚欠 {socialMonths} 个月<br/>已缴 ¥ {money(totals.socialActual)} · 应缴 ¥ {money(totals.socialExpected)}</p></div></article>}
       {fundEnabled&&<article><span className="metric-icon fund">积</span><div><small>公积金公司尚欠补缴</small><strong>¥ {money(totals.fund)}</strong><p>实缴 {fundPaidMonths} 个月 · 尚欠 {fundMonths} 个月<br/>已缴 ¥ {money(totals.fundActual)} · 应缴 ¥ {money(totals.fundExpected)}</p></div></article>}
       {doublePayEnabled&&<article><span className="metric-icon double">2×</span><div><small>未续签双倍工资差额</small><strong>¥ {money(totals.double)}</strong><p>{effectiveDoubleRule.enabled ? "已自动启用 · 最多支持 11 个月" : "尚未满足超期 1 个月"}</p></div></article>}
-      {reimbursementEnabled&&<article><span className="metric-icon reimbursement">报</span><div><small>尚未支付的报销</small><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong><p>{setup.reimbursementIncluded?"已计入当前合计":"仅在报告中记录，未计入合计"}{setup.reimbursementNote&&<><br/>{setup.reimbursementNote}</>}</p></div></article>}
+      {reimbursementEnabled&&<article><span className="metric-icon reimbursement">报</span><div><small>尚未支付的报销</small><strong>¥ {money(Number(setup.reimbursementAmount||0))}</strong><p>{setup.reimbursementIncluded?"已计入权益履行总额":"仅在报告中记录，未计入总额"}{setup.reimbursementNote&&<><br/>{setup.reimbursementNote}</>}</p></div></article>}
       {annualLeaveEnabled&&<article><span className="metric-icon annual">年</span><div><small>未休年假额外补偿</small><strong>¥ {money(annualLeaveTotal)}</strong><p>{annualLeaveUnusedDays} 天 · 日工资 ¥ {money(dailyWage(effectiveAnnualLeavePay))}<br/>{setup.annualLeaveWrittenWaiver?"已按书面主动放弃处理":"按额外 200% 计入"}</p></div></article>}
       {overtimeEnabled&&<article><span className="metric-icon overtime">加</span><div><small>加班工资</small><strong>¥ {money(overtimeTotal)}</strong><p>工作日 ¥ {money(overtimeBreakdown.weekday)} · 休息日 ¥ {money(overtimeBreakdown.restDay)}<br/>法定节假日 ¥ {money(overtimeBreakdown.holiday)}</p></div></article>}
       {compTimeEnabled&&<article><span className="metric-icon comptime">休</span><div><small>休息日加班未补休</small><strong>¥ {money(compTimeTotal)}</strong><p>{percent(setup.outstandingCompTimeDays)} 天 · 按日工资 200% 测算</p></div></article>}
@@ -653,14 +754,14 @@ export default function Home() {
       <div className="rule-fields">
         <label><span>劳动合同期满日</span><div className="rule-date-value">{setup.contractEnd || "未填写"}</div><small>即合同上写的最后一天，可返回引导问题修改</small></label>
         <span className="rule-arrow">→</span>
-        <label><span>超期持续用工截止日</span><div className="rule-date-value">{setup.cutoffDate || "未填写"}</div><small>系统以统计截止日期作为持续用工截止日</small></label>
-        <div className="rule-result"><span>规则测算结果</span><strong>¥ {money(totals.double)}</strong><small>{(() => { const end = atMidnight(effectiveDoubleRule.contractEnd); const until = atMidnight(effectiveDoubleRule.continuedUntil); if (!end || !until) return "请先填写合同期满日和统计截止日期"; const start = addDays(end,1); if (!effectiveDoubleRule.enabled) return `持续用工尚未满 1 个月，满月判定日为 ${dateLabel(addDays(addMonths(start,1),-1))}`; return `已从 ${dateLabel(start)} 起计入，最迟至 ${dateLabel(addDays(addMonths(start,11),-1))}`; })()}</small></div>
+        <label><span>超期持续用工截止日</span><div className="rule-date-value">{setup.cutoffDate || "未填写"}</div><small>系统以计薪截止日期作为持续用工截止日</small></label>
+        <div className="rule-result"><span>规则测算结果</span><strong>¥ {money(totals.double)}</strong><small>{(() => { const end = atMidnight(effectiveDoubleRule.contractEnd); const until = atMidnight(effectiveDoubleRule.continuedUntil); if (!end || !until) return "请先填写合同期满日并确认计薪截止日期"; const start = addDays(end,1); if (!effectiveDoubleRule.enabled) return `持续用工尚未满 1 个月，满月判定日为 ${dateLabel(addDays(addMonths(start,1),-1))}`; return `已从 ${dateLabel(start)} 起计入，最迟至 ${dateLabel(addDays(addMonths(start,11),-1))}`; })()}</small></div>
       </div>
-      <p className="rule-note"><b>自动规则：</b>统计截止日显示劳动关系在合同期满后仍持续存在，且从期满次日起达到 1 个月时，系统自动开启双倍工资，并追溯至期满次日计算额外一倍；不足整月按该月工作日比例折算，累计最多 11 个月。工资基数取明细中的“合同月薪”。</p>
+      <p className="rule-note"><b>自动规则：</b>计薪截止日显示劳动关系在合同期满后仍持续存在，且从期满次日起达到 1 个月时，系统自动开启双倍工资，并追溯至期满次日计算额外一倍；不足整月按该月工作日比例折算，累计最多 11 个月。工资基数取明细中的“合同月薪”。</p>
     </section>}
 
     <section className="exceptions-card" aria-label="异常月份摘要">
-      <div className="exceptions-head"><div><p className="eyebrow">EXCEPTION SUMMARY / 异常项目</p><h2>{exceptionCount} 项需要重点核对</h2></div><strong>¥ {money(grandTotal)}</strong></div>
+      <div className="exceptions-head"><div><p className="eyebrow">EXCEPTION SUMMARY / 异常项目</p><h2>{exceptionCount} 项需要重点核对</h2></div><strong>¥ {money(rightsFulfillmentTotal)}</strong></div>
       {exceptionCount ? <div className="exception-list">{exceptionRows.map(row=><div className="exception-row" key={row.id}><b>{row.wageMonth || row.payDate || "未命名月份"}</b><span>{wageEnabled&&Number(row.arrears||0)>0&&<i>欠薪</i>}{socialEnabled&&socialDueFor(row)>0&&<i>社保</i>}{fundEnabled&&fundDueFor(row)>0&&<i>公积金</i>}{doublePayEnabled&&Number(doubleById.get(row.id)||0)>0&&<i>双倍工资</i>}</span><strong>¥ {money(rowClaimTotal(row))}</strong></div>)}
         {hasAnnualLeaveException&&<div className="exception-row"><b>未休年假</b><span><i>年假</i></span><strong>¥ {money(annualLeaveTotal)}</strong></div>}
         {hasOvertimeException&&<div className="exception-row"><b>加班工资</b><span><i>加班</i></span><strong>¥ {money(overtimeTotal)}</strong></div>}
@@ -688,14 +789,14 @@ export default function Home() {
 
     {precisionOpen&&<section className="sheet">
       <div className="sheet-head"><div><p className="eyebrow">MONTHLY LEDGER / 月度台账</p><h2>欠薪与补缴明细</h2></div><div className="tools"><label className="search">⌕<input aria-label="搜索月份或备注" placeholder="搜索月份或备注" value={query} onChange={e => setQuery(e.target.value)}/></label><div className="filters">{(["全部","未结清","已结清"] as const).map(x => <button key={x} className={filter===x?"active":""} onClick={()=>setFilter(x)}>{x}</button>)}</div><button className="add" onClick={addRow}>＋ 新增月份</button></div></div>
-      <div className="table-wrap"><table><thead><tr>{fields.map((f,i) => <th key={`${f.key}-${i}`} style={{minWidth:f.width}}>{f.group && <span>{f.group}</span>}{f.label}</th>)}<th className="double-col"><span>未续签</span>双倍工资差额</th><th className="sticky-right">本月欠款</th><th className="sticky-right action-col"></th></tr></thead>
-      <tbody>{visible.map(r => <tr key={r.id} className={r.status === "未结清" ? "open" : ""}>{fields.map((f,i) => <td key={`${String(f.key)}-${i}`}>
-        {f.key === "status" ? <select aria-label={`${r.payDate}结清状态`} className={r.status === "未结清" ? "status open" : "status"} value={r.status} onChange={e=>update(r.id,f.key,e.target.value)}><option>已结清</option><option>未结清</option></select>
+	      <div className="table-wrap"><table><thead><tr>{fields.map((f,i) => <th key={`${f.key}-${i}`} style={{minWidth:f.width}}>{f.group && <span>{f.group}</span>}{f.label}</th>)}<th className="double-col"><span>未续签</span>双倍工资差额</th><th className="sticky-right">本月权益履行</th><th className="sticky-right action-col"></th></tr></thead>
+	      <tbody>{visible.map(r => { const status=rowSettlementStatus(r); return <tr key={r.id} className={status === "未结清" ? "open" : ""}>{fields.map((f,i) => <td key={`${String(f.key)}-${i}`}>
+        {f.key === "status" ? <output aria-label={`${r.payDate}结清状态`} className={status === "未结清" ? "status open" : "status"}>{status}</output>
         : f.key === "socialDue" || f.key === "fundDue" ? <div className="calculated-cell"><b>¥ {money(f.key === "socialDue" ? socialDueFor(r) : fundDueFor(r))}</b><small>自动计算</small></div>
         : <input aria-label={`${r.payDate}${f.label}`} className={f.key === "wageMonth" || f.key === "note" || f.key === "payDate" ? "text" : "number"} type={f.key === "wageMonth" ? "month" : f.key === "note" || f.key === "payDate" ? "text" : "number"} step="0.01" value={r[f.key]} onChange={e=>update(r.id,f.key,e.target.value)}/>}</td>)}
         <td className={`double-value ${doublePayEnabled&&(doubleById.get(r.id) || 0) > 0 ? "active" : ""}`}>¥ {money(doublePayEnabled ? doubleById.get(r.id) || 0 : 0)}</td>
-        <td className="row-total sticky-right">¥ {money(rowClaimTotal(r))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>)}</tbody>
-      <tfoot><tr>{fields.map((f,i) => <td key={`${String(f.key)}-total`}>{i === 0 ? "总计" : f.key === "normalPay" ? `¥ ${money(totals.normal)}` : f.key === "paid" ? `¥ ${money(totals.paid)}` : f.key === "arrears" ? `¥ ${money(totals.arrears)}` : f.key === "socialPaid" ? `¥ ${money(totals.socialActual)}` : f.key === "socialDue" ? `¥ ${money(totals.social)}` : f.key === "fundPaid" ? `¥ ${money(totals.fundActual)}` : f.key === "fundDue" ? `¥ ${money(totals.fund)}` : ""}</td>)}<td>¥ {money(totals.double)}</td><td className="sticky-right">¥ {money(grandTotal)}</td><td className="sticky-right action-col"></td></tr></tfoot></table></div>
+        <td className="row-total sticky-right">¥ {money(rowClaimTotal(r))}</td><td className="sticky-right action-col"><button aria-label={`删除${r.payDate}`} className="delete" onClick={()=>remove(r.id)}>×</button></td></tr>})}</tbody>
+	      <tfoot><tr>{fields.map((f,i) => <td key={`${String(f.key)}-total`}>{i === 0 ? "总计" : f.key === "normalPay" ? `¥ ${money(totals.normal)}` : f.key === "paid" ? `¥ ${money(totals.paid)}` : f.key === "arrears" ? `¥ ${money(totals.arrears)}` : f.key === "socialPaid" ? `¥ ${money(totals.socialActual)}` : f.key === "socialDue" ? `¥ ${money(totals.social)}` : f.key === "fundPaid" ? `¥ ${money(totals.fundActual)}` : f.key === "fundDue" ? `¥ ${money(totals.fund)}` : ""}</td>)}<td>¥ {money(totals.double)}</td><td className="sticky-right">¥ {money(rightsFulfillmentTotal)}</td><td className="sticky-right action-col"></td></tr></tfoot></table></div>
       <div className="sheet-foot"><span>显示 {visible.length} / {rows.length} 条记录 · 修改后请保存</span><span><i></i> 可编辑单元格 <b>总计另包含已选的年假、加班、未补休、离职补偿及报销项目</b></span></div>
     </section>}
     </>}
@@ -714,24 +815,30 @@ export default function Home() {
         </section>
 
         <dl className="report-meta">
-          <div><dt>测算月份</dt><dd>{reportMonth}</dd></div>
+          <div><dt>任职状态</dt><dd>{setup.employmentStatus==="active"?"当前在职":"已经离职"}</dd></div>
           <div><dt>测算期间</dt><dd>{rows.length} 个月</dd></div>
           <div><dt>入职日期</dt><dd>{setup.employmentDate||"—"}</dd></div>
-          <div><dt>统计截止日期</dt><dd>{setup.cutoffDate||"—"}</dd></div>
+          <div><dt>计薪截止日期</dt><dd>{setup.cutoffDate||"—"}</dd></div>
         </dl>
 
-        <section className="report-executive" aria-label="当前测算合计">
-          <div><span>当前测算合计</span><p>{reimbursementEnabled?(setup.reimbursementIncluded?"已包含用户填报的报销金额":`未包含仅作记录的报销金额 ¥ ${money(Number(setup.reimbursementAmount||0))}`):"本次未选择报销事项"}</p></div>
-          <strong><small>¥</small>{money(grandTotal)}</strong>
+        <section className="report-executive" aria-label="权益履行总额">
+          <div><span>权益履行总额</span><p>个人应缴部分从税前欠薪中预计划转，不在总额中重复相加。{reimbursementEnabled?(setup.reimbursementIncluded?" 已包含用户填报的报销金额。":` 未包含仅作记录的报销金额 ¥ ${money(Number(setup.reimbursementAmount||0))}。`):""}</p></div>
+          <strong><small>¥</small>{money(rightsFulfillmentTotal)}</strong>
+        </section>
+
+        <section className="report-allocation" aria-label="资金去向">
+          <header><div><span>个人应缴部分</span><strong>¥ {money(personalContributionTotal)}</strong><small>社保 ¥ {money(totals.personalSocial)} · 公积金 ¥ {money(totals.personalFund)}</small></div><p>资金去向</p></header>
+          <div><article><span>支付给本人</span><strong>¥ {money(expectedPersonalActual)}</strong></article><article><span>缴入社保</span><strong>¥ {money(toSocialAccount)}</strong></article><article><span>缴入公积金</span><strong>¥ {money(toFundAccount)}</strong></article></div>
+          <p>预计个人实际取得未扣个人所得税。缴费基数暂按工资推定，需结合本人上年度月平均工资、新入职起薪月工资及当地上下限修正。</p>
         </section>
 
         <section className="report-section report-composition">
-          <header><span className="report-section-index">01</span><div><h2>欠款构成</h2><p>按本次选择的测算事项汇总</p></div></header>
+          <header><span className="report-section-index">01</span><div><h2>权益构成</h2><p>按本次选择的测算事项汇总</p></div></header>
           <table className="report-summary-table">
             <thead><tr><th>项目</th><th>计算口径</th><th>金额（人民币）</th></tr></thead>
             <tbody>
-              {wageEnabled&&<tr><td>欠薪合计</td><td>{wageArrearsMonths.length?`${wageArrearsPeriod}（${wageArrearsMonths.length}个月）`:"当前未形成欠薪"}</td><td>¥ {money(totals.arrears)}</td></tr>}
-              {socialEnabled&&<tr><td>社保公司尚欠补缴</td><td>五险公司承担部分</td><td>¥ {money(totals.social)}</td></tr>}
+              {wageEnabled&&<tr><td>税前欠薪（个人应缴前）</td><td>{wageArrearsMonths.length?`${wageArrearsPeriod}（${wageArrearsMonths.length}个月）${monthlyWageAdjustedCount?`；${monthlyWageAdjustedCount}个月应发工资已手工调整`:"；首尾月按自然日在职比例预填"}`:"当前未形成欠薪"}</td><td>¥ {money(totals.arrears)}</td></tr>}
+              {socialEnabled&&<tr><td>社保公司尚欠补缴</td><td>社保公司承担部分</td><td>¥ {money(totals.social)}</td></tr>}
               {fundEnabled&&<tr><td>公积金公司尚欠补缴</td><td>单位缴存部分</td><td>¥ {money(totals.fund)}</td></tr>}
               {doublePayEnabled&&<tr><td>未续签双倍工资差额</td><td>满足条件后最多 11 个月</td><td>¥ {money(totals.double)}</td></tr>}
               {annualLeaveEnabled&&<tr><td>未休年假额外补偿</td><td>{annualLeaveUnusedDays} 天 × 日工资 × 200%</td><td>¥ {money(annualLeaveTotal)}</td></tr>}
@@ -740,9 +847,10 @@ export default function Home() {
               {terminationEnabled&&<tr><td>离职经济补偿</td><td>{setup.terminationType==="forced"?`N=${percent(terminationBreakdown.appliedN)}`:`N=${percent(terminationBreakdown.appliedN)} + X=${terminationBreakdown.extraMonths}`}</td><td>¥ {money(terminationTotal)}</td></tr>}
               {workInjuryEnabled&&<tr className="report-supplement-row"><td>工伤情况初筛</td><td>{workInjuryResult.title}</td><td>不计入合计</td></tr>}
               {reimbursementEnabled&&<tr><td>报销欠款</td><td>{setup.reimbursementIncluded?"计入本次合计":"仅作记录，不计入合计"}</td><td>¥ {money(Number(setup.reimbursementAmount||0))}</td></tr>}
+              {personalContributionTotal>0&&<tr className="report-supplement-row"><td>个人应缴部分</td><td>从税前欠薪中划转，不重复计入总额</td><td>¥ {money(personalContributionTotal)}</td></tr>}
               {wageEnabled&&totals.paid>0&&<tr className="report-supplement-row"><td>后续补发工资</td><td>参考信息，不重复计入</td><td>¥ {money(totals.paid)}</td></tr>}
             </tbody>
-            <tfoot><tr><th colSpan={2}>当前测算合计</th><td>¥ {money(grandTotal)}</td></tr></tfoot>
+            <tfoot><tr><th colSpan={2}>权益履行总额</th><td>¥ {money(rightsFulfillmentTotal)}</td></tr></tfoot>
           </table>
         </section>
 
@@ -794,6 +902,6 @@ export default function Home() {
       </article>
     </section>
 
-    <footer><span>薪资计算器</span><p>测算与初筛结果仅供核对参考，工资、缴费、工伤、年假、加班、调休及例外情形请以有效证据、法定认定程序和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentDate:"2025-06-01",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
+    <footer><span>薪资计算器</span><p>测算与初筛结果仅供核对参考，工资、缴费、工伤、年假、加班、调休及例外情形请以有效证据、法定认定程序和当地裁审口径为准。</p><button onClick={() => { if(confirm("加载示例会替换当前页面数据，是否继续？")) { setRows(exampleRows); setDoubleRule(defaultRule); setSetup({...defaultSetup,employmentStatus:"departed",employmentDate:"2025-06-01",departureDate:"2026-07-10",cutoffDate:"2026-07-10",contractStart:"2025-06-01",contractEnd:"2026-06-10",contractPay:20000,arrearsStartMonth:"2026-02",firstArrearsPaidRate:30,socialHasPaid:true,socialActualBase:4986,socialPaidStartMonth:"2025-06",socialPaidEndMonth:"2026-07",socialBase:20000,fundHasPaid:true,fundPaid:250,fundPaidStartMonth:"2025-06",fundPaidEndMonth:"2026-07",fundBase:20000,fundRate:11.756}); setSelectedClaims(["wage","social","fund","doublePay"]); setFlowStep("results"); setPrecisionOpen(false); setCaseName("示例：欠薪与补缴测算"); } }}>加载示例数据</button></footer>
   </main>;
 }

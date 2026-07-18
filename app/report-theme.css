@@ -90,6 +90,20 @@
 .report-executive > strong { color: var(--report-accent); font-family: var(--vd-font-body); font-size: 30pt; font-weight: 800; }
 .report-executive > strong small { color: var(--report-accent); font-size: 13pt; }
 
+.report-allocation { margin: 0 0 7mm; padding: 4.5mm 0; border-top: 1px solid var(--report-ink); border-bottom: 1px solid var(--report-ink); break-inside: avoid; }
+.report-allocation > header { display: grid; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 3mm; }
+.report-allocation > header div span,.report-allocation > header div strong,.report-allocation > header div small { display: block; }
+.report-allocation > header div span,.report-allocation > header > p { color: var(--report-faint); font-size: 7.2pt; }
+.report-allocation > header div strong { margin-top: .7mm; color: var(--report-ink); font-size: 11pt; font-weight: 800; }
+.report-allocation > header div small { margin-top: .7mm; color: var(--report-muted); font-size: 7pt; }
+.report-allocation > header > p { margin: 0; font-weight: 700; letter-spacing: .06em; }
+.report-allocation > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--report-ink); border: 1px solid var(--report-ink); }
+.report-allocation article { padding: 3mm; background: var(--vd-color-paper); }
+.report-allocation article span,.report-allocation article strong { display: block; }
+.report-allocation article span { color: var(--report-muted); font-size: 7pt; }
+.report-allocation article strong { margin-top: 1mm; color: var(--report-ink); font-size: 11pt; font-weight: 800; font-variant-numeric: tabular-nums; }
+.report-allocation > p { margin: 2.5mm 0 0; color: var(--report-faint); font-size: 6.8pt; line-height: 1.6; }
+
 .report-section > header { grid-template-columns: 10mm 1fr; align-items: center; margin-bottom: 3.5mm; }
 .report-section-index {
   width: 8mm;
