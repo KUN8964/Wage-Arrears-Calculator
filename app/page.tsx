@@ -365,7 +365,15 @@ export default function Home() {
 
   const rowsWithComputedGaps = () => rows.map(r => ({...r,status:rowSettlementStatus(r),socialDue:socialDueFor(r),fundDue:fundDueFor(r)}));
   const save = () => { const persistedSetup={...setup,socialPaid:setupSocialActualMonthly,socialRate:effectiveSocialRate}; localStorage.setItem("xinbao-rows", JSON.stringify(rowsWithComputedGaps())); localStorage.setItem("xinbao-double-rule", JSON.stringify(effectiveDoubleRule)); localStorage.setItem("xinbao-meta", JSON.stringify({version:15,caseName,setup:persistedSetup,rowsCutoffDate:setup.cutoffDate,selectedClaims,flowStep})); setSaved(true); setTimeout(() => setSaved(false), 1800); };
-  const printReport = () => window.print();
+  const printReport = () => {
+    const title = document.title;
+    document.title = " ";
+    try {
+      window.print();
+    } finally {
+      document.title = title;
+    }
+  };
   const addRow = () => setRows(prev => [...prev, { ...(prev[prev.length - 1] || blankRow()), id: Date.now(), wageMonth:"", payDate:"", normalPay:0, note:"新增欠薪月份", paid:0, status:"未结清", duePay:Number(setup.contractPay || 0), arrears:Number(setup.contractPay || 0), contractPay:Number(setup.contractPay || 0), socialPaid:0, socialBase:effectiveSocialBase, socialRate:effectiveSocialRate, fundPaid:0, fundBase:effectiveFundBase, fundRate:effectiveFundRate }]);
   const remove = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
   const exportCsv = () => {

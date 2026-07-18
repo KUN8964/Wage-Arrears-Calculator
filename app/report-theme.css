@@ -200,5 +200,5 @@
 .report-footer { padding-top: 4.5mm; border-top-color: var(--report-ink); }
 
 @media print {
-  .report-sheet { padding: 14mm 16mm 11mm; }
+  .report-sheet { padding: 0; }
 }

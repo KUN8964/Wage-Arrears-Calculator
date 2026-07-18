@@ -152,13 +152,17 @@ test("provides a restrained Swiss-style A4 report that exports through system pr
   const reportCss = css.slice(css.indexOf("/* Printable report */"));
   assert.match(page, /导出报告/);
   assert.match(page, /window\.print\(\)/);
+  assert.match(page, /document\.title = " "/);
+  assert.match(page, /document\.title = title/);
   assert.match(page, /className="print-report"/);
   assert.match(page, /系统生成报告 · SYSTEM GENERATED REPORT/);
   assert.match(page, /工资、社保及劳动权益/);
   assert.match(page, /报告编号/);
   assert.match(page, /报销口径/);
-  assert.match(css, /@page\{size:A4/);
+  assert.match(css, /@page\{size:A4;margin:16mm;@top-right\{[^}]*工资、社保、年假与加班权益测算[^}]*text-align:right[^}]*\}@bottom-right\{[^}]*counter\(page\)[^}]*counter\(pages\)[^}]*text-align:right/);
   assert.match(css, /@media print/);
+  assert.match(css, /\.report-sheet\{display:block;width:auto;min-height:265mm;padding:0\}/);
+  assert.match(css, /\.report-footer\{display:none!important\}/);
   assert.match(css, /\.app-shell>\*:not\(\.print-report\)/);
   assert.match(css, /\.report-export\{[^}]*color:#fff!important/);
   assert.match(page, /className="report-masthead"/);
