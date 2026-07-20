@@ -408,6 +408,7 @@ test("applies the editorial-tech design system without weakening form accessibil
   assert.match(theme, /clip-path: polygon\(/);
   assert.match(theme, /\.hero-actions \{[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*bottom: 0;/);
   assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{[\s\S]*font-size: clamp\(6rem, 11\.5vw, 11\.5rem\)/);
+  assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{[\s\S]*font-weight: var\(--vd-font-weight-medium\)/);
   assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{[\s\S]*letter-spacing: \.1em/);
   assert.match(theme, /\.hero-dot-banner h1 > \.hero-slogan \{ font-size: clamp\(3\.5rem, 16vw, 4\.25rem\); \}/);
   assert.match(theme, /\.hero-slogan \.split-text-character \{[\s\S]*animation: vd-split-character-in 720ms/);
