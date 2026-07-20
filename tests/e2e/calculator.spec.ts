@@ -117,15 +117,15 @@ test("previews the monthly housing fund shortfall from the wage-inferred base", 
   await page.getByRole("button", { name:"下一步：回答问题 →" }).click();
 
   await page.getByRole("button", { name:"缴纳过", exact:true }).click();
-  await page.getByLabel("公司实际每月缴纳金额", { exact:false }).fill("250");
+  await page.getByLabel("单位实际每月缴存金额（可选）", { exact:false }).fill("250");
   await page.getByLabel("最后缴到哪个月？", { exact:false }).fill("2026-03");
 
   const preview = page.locator(".fund-formula");
-  await expect(preview.getByText("公司实际缴纳 = 填写的单位月缴金额", { exact:true })).toBeVisible();
+  await expect(preview.getByText("单位实际缴存（填写或推算）", { exact:true })).toBeVisible();
   await expect(preview.getByText("¥ 250.00", { exact:true })).toBeVisible();
-  await expect(preview.getByText("应缴金额 = 工资推定基数 × 系统采用比例", { exact:true })).toBeVisible();
+  await expect(preview.getByText("单位应缴", { exact:true })).toBeVisible();
   await expect(preview.getByText("¥ 1,000.00", { exact:true })).toBeVisible();
-  await expect(preview.getByText("每月少缴", { exact:true })).toBeVisible();
+  await expect(preview.getByText("单位每月少缴", { exact:true })).toBeVisible();
   await expect(preview.getByText("¥ 750.00", { exact:true })).toBeVisible();
 });
 
@@ -141,7 +141,7 @@ test("prefills fund contribution dates from the social-insurance period and keep
   await page.locator("#question-social-start").fill("2025-07");
   await page.locator("#question-social-end").fill("2026-05");
 
-  const fundModule=page.locator("article.question-module").filter({hasText:"公积金公司部分"});
+  const fundModule=page.locator("article.question-module").filter({hasText:"住房公积金"});
   await fundModule.getByRole("button", { name:"缴纳过", exact:true }).click();
   const fundStart=page.locator("#question-fund-start"), fundEnd=page.locator("#question-fund-end");
   await expect(fundStart).toHaveValue("2025-07");
@@ -153,6 +153,40 @@ test("prefills fund contribution dates from the social-insurance period and keep
   await expect(fundStart).toHaveValue("2025-08");
   await expect(fundEnd).toHaveValue("2026-04");
   await expect(fundModule.getByText("已修改", { exact:true })).toHaveCount(2);
+});
+
+test("infers contribution bases from payslip deductions and applies leave deductions before arrears", async ({ page }) => {
+  await fillDepartedBasics(page, "2026-01-01", "2026-01-31");
+  await page.getByRole("button", { name:"下一步：选择事项 →" }).click();
+  await page.getByRole("button", { name:/工资少发或未发/ }).click();
+  await page.getByRole("button", { name:/社保少缴或未缴/ }).click();
+  await page.getByRole("button", { name:/公积金少缴或未缴/ }).click();
+  await page.getByRole("button", { name:"下一步：回答问题 →" }).click();
+  await page.getByLabel("从哪个月开始欠薪？", { exact:false }).fill("2026-01");
+
+  const socialModule=page.locator("article.question-module").filter({hasText:"社会保险"});
+  await socialModule.getByRole("button", { name:"缴纳过", exact:true }).click();
+  await socialModule.getByLabel("工资表个人社保扣款", { exact:false }).fill("523.53");
+  await page.locator("#question-social-end").fill("2026-01");
+  await expect(socialModule.getByLabel("实际申报缴费基数", { exact:true })).toHaveValue("4986");
+
+  const fundModule=page.locator("article.question-module").filter({hasText:"住房公积金"});
+  await fundModule.getByRole("button", { name:"缴纳过", exact:true }).click();
+  await fundModule.getByLabel("工资表个人公积金扣款", { exact:false }).fill("125");
+  await page.locator("#question-fund-end").fill("2026-01");
+  await expect(fundModule.getByLabel("实际缴存基数", { exact:true })).toHaveValue("2500");
+
+  await page.getByRole("button", { name:"下一步：核对推定 →" }).click();
+  await page.getByRole("button", { name:"确认并生成结果 →" }).click();
+  await page.getByLabel("2026-01 请假等工资扣款", { exact:true }).fill("1379.31");
+  await expect(page.getByLabel("2026-01 应发工资", { exact:true })).toHaveValue("18620.69");
+
+  const reconciliation=page.getByLabel("社保和公积金补缴明细汇总");
+  await expect(reconciliation.getByText("社保账户应补合计", { exact:true })).toBeVisible();
+  await expect(reconciliation.getByText("¥ 5,720.33", { exact:true })).toBeVisible();
+  await expect(reconciliation.getByText("公积金账户应补合计", { exact:true })).toBeVisible();
+  await expect(reconciliation.getByText("¥ 1,750.00", { exact:true })).toBeVisible();
+  await expect(reconciliation.getByText("¥ 7,470.33", { exact:true })).toBeVisible();
 });
 
 test("migrates the former default social rates into the current Hangzhou contribution lines", async ({ page }) => {
@@ -358,14 +392,14 @@ test("shows a balanced allocation between the worker and contribution accounts",
   const allocation=page.getByLabel("权益履行与资金去向");
   await expect(allocation.getByText("权益履行总额", { exact:true })).toBeVisible();
   await expect(allocation.getByText("¥ 26,780.00", { exact:true }).first()).toBeVisible();
-  await expect(allocation.getByText("个人应缴部分", { exact:true })).toBeVisible();
+  await expect(allocation.getByText("工资中待划个人差额", { exact:true })).toBeVisible();
   await expect(allocation.getByText("¥ 3,100.00", { exact:true })).toBeVisible();
   await expect(allocation.getByText("预计个人实际取得", { exact:true })).toBeVisible();
   await expect(allocation.getByText("¥ 16,900.00", { exact:true }).first()).toBeVisible();
   await expect(allocation.getByText("缴入社保", { exact:true })).toBeVisible();
-  await expect(allocation.getByText("¥ 7,880.00", { exact:true })).toBeVisible();
+  await expect(allocation.getByText("¥ 7,880.00", { exact:true }).first()).toBeVisible();
   await expect(allocation.getByText("缴入公积金", { exact:true })).toBeVisible();
-  await expect(allocation.getByText("¥ 2,000.00", { exact:true })).toBeVisible();
+  await expect(allocation.getByText("¥ 2,000.00", { exact:true }).first()).toBeVisible();
 });
 
 test("renders a personalized enforcement route and expandable evidence list", async ({ page }) => {
@@ -567,6 +601,8 @@ test("generates personalized Markdown and Word notices when article 38 notice is
   for (const label of ["欠付工资", "社会保险核查补缴", "住房公积金核查补缴", "未支付的工作费用报销", "未支付的加班工资"]) {
     await expect(preloadedRights.getByText(label, { exact:true })).toBeVisible();
   }
+  await expect(preloadedRights.getByText("当前账户预计应补 ¥ 7,880.00（公司少缴 ¥ 5,780.00 + 个人少缴 ¥ 2,100.00）；最终以证据、官方核定或有权机关认定为准。", { exact:true })).toBeVisible();
+  await expect(preloadedRights.getByText("当前账户预计应补 ¥ 2,000.00（单位少缴 ¥ 1,000.00 + 个人少缴 ¥ 1,000.00）；最终以证据、官方核定或有权机关认定为准。", { exact:true })).toBeVisible();
   await expect(preloadedRights.getByText("未订立书面劳动合同或合同期满继续用工的双倍工资差额", { exact:true })).toHaveCount(0);
   await expect(preloadedRights.getByText("未休年休假工资报酬", { exact:true })).toHaveCount(0);
   await preloadedRights.getByLabel("通知列明：住房公积金核查补缴").check();

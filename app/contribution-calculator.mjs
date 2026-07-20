@@ -43,6 +43,54 @@ export function declaredBaseFromPaidAmount(actualPaid = 0, rates = DEFAULT_SOCIA
   return rate ? roundMoney(safeNumber(actualPaid) * 100 / rate) : 0;
 }
 
+/** @param {number} actualPaid @param {number} rate */
+export function baseFromContributionAmount(actualPaid = 0, rate = 0) {
+  const normalizedRate = roundRate(safeNumber(rate));
+  return normalizedRate ? roundMoney(safeNumber(actualPaid) * 100 / normalizedRate) : 0;
+}
+
+/**
+ * Compare the employer-funded and employee-funded parts independently. The
+ * employee "actual" amount may come from a payslip deduction; it proves the
+ * deduction shown by the employer, not remittance to the contribution account.
+ *
+ * @param {{
+ *   expectedBase?: number,
+ *   actualBase?: number,
+ *   employerRate?: number,
+ *   personalRate?: number,
+ *   actualEmployerPaid?: number,
+ *   actualPersonalPaid?: number,
+ * }} values
+ */
+export function contributionReconciliationForMonth({
+  expectedBase = 0,
+  actualBase = 0,
+  employerRate = 0,
+  personalRate = 0,
+  actualEmployerPaid,
+  actualPersonalPaid,
+} = {}) {
+  const expected = safeNumber(expectedBase);
+  const actual = safeNumber(actualBase);
+  const employerExpected = roundMoney(expected * safeNumber(employerRate) / 100);
+  const employerActual = roundMoney(actualEmployerPaid === undefined
+    ? actual * safeNumber(employerRate) / 100
+    : safeNumber(actualEmployerPaid));
+  const personalExpected = roundMoney(expected * safeNumber(personalRate) / 100);
+  const personalActual = roundMoney(actualPersonalPaid === undefined
+    ? actual * safeNumber(personalRate) / 100
+    : safeNumber(actualPersonalPaid));
+  const employerGap = roundMoney(Math.max(0, employerExpected - employerActual));
+  const personalGap = roundMoney(Math.max(0, personalExpected - personalActual));
+  return {
+    expectedBase:roundMoney(expected), actualBase:roundMoney(actual),
+    employerExpected, employerActual, employerGap,
+    personalExpected, personalActual, personalGap,
+    totalGap:sumMoney([employerGap, personalGap]),
+  };
+}
+
 /** @param {{ expectedBase?: number, actualBase?: number, rates?: SocialRates | Readonly<SocialRates> }} values */
 export function socialContributionForMonth({ expectedBase = 0, actualBase = 0, rates = DEFAULT_SOCIAL_RATES } = {}) {
   const rate = totalEmployerRate(rates);
@@ -102,4 +150,23 @@ export function personalContributionsForArrears({
     }
   }
   return { arrearsRatio:roundRate(arrearsRatio), social, fund, total:sumMoney([social, fund]) };
+}
+
+/**
+ * Allocate only the still-unpaid employee contribution gaps from unpaid gross
+ * wages. Amounts already shown as deducted on a payslip are not deducted twice.
+ *
+ * @param {{ arrears?:number, socialGap?:number, fundGap?:number }} values
+ */
+export function personalContributionGapsForArrears({ arrears = 0, socialGap = 0, fundGap = 0 } = {}) {
+  const unpaid = roundMoney(safeNumber(arrears));
+  const rawSocial = safeNumber(socialGap);
+  const rawFund = safeNumber(fundGap);
+  const rawTotal = rawSocial + rawFund;
+  const scale = rawTotal > unpaid && rawTotal > 0 ? unpaid / rawTotal : 1;
+  let social = roundMoney(rawSocial * scale);
+  let fund = roundMoney(rawFund * scale);
+  const roundedTotal = sumMoney([social, fund]);
+  if (roundedTotal > unpaid) fund = roundMoney(Math.max(0, fund - (roundedTotal - unpaid)));
+  return { social, fund, total:sumMoney([social, fund]) };
 }

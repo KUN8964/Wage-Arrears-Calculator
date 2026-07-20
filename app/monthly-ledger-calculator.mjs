@@ -18,8 +18,8 @@ export const generateMonthlyLedger = ({
   wageEnabled = false,
   arrearsStartMonth = "",
   firstArrearsPaidRate = 0,
-  social = {enabled:false,hasPaid:false,startMonth:"",endMonth:"",actualMonthly:0,base:0,rate:0},
-  fund = {enabled:false,hasPaid:false,startMonth:"",endMonth:"",actualMonthly:0,base:0,rate:0},
+  social = {enabled:false,hasPaid:false,startMonth:"",endMonth:"",actualMonthly:0,actualBase:0,personalActualMonthly:0,base:0,rate:0},
+  fund = {enabled:false,hasPaid:false,startMonth:"",endMonth:"",actualMonthly:0,actualBase:0,personalActualMonthly:0,base:0,rate:0},
   idStart = Date.now(),
 } = {}) => {
   const startDate = parseIsoDateLocal(employmentDate);
@@ -35,8 +35,14 @@ export const generateMonthlyLedger = ({
     const firstArrears = wageEnabled && wageMonth === arrearsStartMonth;
     const normalPay = beforeArrears ? duePay : firstArrears ? roundMoney(duePay * firstPaidRate / 100) : 0;
     const arrears = wageArrears({duePay,normalPay,paid:0});
-    const socialPaid = social.enabled && social.hasPaid && monthIsWithin(wageMonth,social.startMonth,social.endMonth) ? roundMoney(social.actualMonthly) : 0;
-    const fundPaid = fund.enabled && fund.hasPaid && monthIsWithin(wageMonth,fund.startMonth,fund.endMonth) ? roundMoney(fund.actualMonthly) : 0;
+    const socialPaidPeriod = social.enabled && social.hasPaid && monthIsWithin(wageMonth,social.startMonth,social.endMonth);
+    const fundPaidPeriod = fund.enabled && fund.hasPaid && monthIsWithin(wageMonth,fund.startMonth,fund.endMonth);
+    const socialPaid = socialPaidPeriod ? roundMoney(social.actualMonthly) : 0;
+    const fundPaid = fundPaidPeriod ? roundMoney(fund.actualMonthly) : 0;
+    const socialActualBase = socialPaidPeriod ? roundMoney(social.actualBase) : 0;
+    const socialPersonalPaid = socialPaidPeriod ? roundMoney(social.personalActualMonthly) : 0;
+    const fundActualBase = fundPaidPeriod ? roundMoney(fund.actualBase) : 0;
+    const fundPersonalPaid = fundPaidPeriod ? roundMoney(fund.personalActualMonthly) : 0;
     const socialDue = contributionGap({base:social.base,rate:social.rate,paid:socialPaid});
     const fundDue = contributionGap({base:fund.base,rate:fund.rate,paid:fundPaid});
     const {employedDays,calendarDays} = monthlyEmploymentSpan({wageMonth,employmentDate,cutoffDate});
@@ -44,9 +50,9 @@ export const generateMonthlyLedger = ({
     const wageNote = beforeArrears ? `${date.getMonth()+1}月工资已正常发放` : firstArrears ? `首个欠薪月，已发${firstPaidRate}%` : `${date.getMonth()+1}月工资默认未发`;
     const note = prorated ? `${wageNote}；按在职 ${employedDays}/${calendarDays} 个自然日预填` : wageNote;
     const row = {
-      id:idStart+index,wageMonth,payDate:"",normalPay,note,paid:0,status:"未结清",duePay,arrears,contractPay:roundMoney(contractPay),
-      socialPaid,socialBase:Number(social.base||0),socialRate:Number(social.rate||0),socialDue,
-      fundPaid,fundBase:Number(fund.base||0),fundRate:Number(fund.rate||0),fundDue,
+      id:idStart+index,wageMonth,payDate:"",normalPay,note,paid:0,status:"未结清",duePay,arrears,contractPay:roundMoney(contractPay),wageDeduction:0,
+      socialPaid,socialBase:Number(social.base||0),socialActualBase,socialPersonalPaid,socialRate:Number(social.rate||0),socialDue,
+      fundPaid,fundBase:Number(fund.base||0),fundActualBase,fundPersonalPaid,fundRate:Number(fund.rate||0),fundDue,
     };
     return {...row,status:rowSettlementStatus(row)};
   });

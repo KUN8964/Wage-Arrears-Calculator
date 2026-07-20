@@ -144,6 +144,11 @@
 .report-summary-table tfoot th { padding-left: 2.2mm; }
 .report-summary-table tfoot td { padding-right: 2.2mm; color: var(--report-ink); font-size: 11pt; }
 
+.report-contribution-reconciliation { margin-top: 8mm; padding-top: 6mm; border-top: 1px solid var(--report-ink); }
+.report-contribution-reconciliation .report-summary-table tbody td:not(:first-child),
+.report-contribution-reconciliation .report-summary-table thead th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.report-contribution-reconciliation .report-summary-table tbody td:nth-child(2) { color: var(--report-ink); font-size: 8.5pt; }
+
 .report-detail-grid { gap: 12mm; margin-top: 8mm; padding-top: 6mm; border-top-color: var(--report-ink); }
 .report-data-list > div { grid-template-columns: 34mm 1fr; padding: 1.8mm 0; border-bottom: 1px solid var(--report-line); }
 .report-data-list dt { color: var(--report-muted); font-size: 8pt; }

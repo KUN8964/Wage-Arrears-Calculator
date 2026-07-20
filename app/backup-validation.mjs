@@ -1,6 +1,6 @@
 import { isIsoDate, isIsoMonth } from "./date-utils.mjs";
 
-export const CURRENT_BACKUP_VERSION = 15;
+export const CURRENT_BACKUP_VERSION = 16;
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 export const MAX_BACKUP_ROWS = 60;
 
@@ -10,11 +10,11 @@ const STATUSES = new Set(["已结清", "未结清"]);
 const MONEY_MAX = 1_000_000_000_000;
 
 const SETUP_NUMBER_RANGES = {
-  contractPay:[0, MONEY_MAX], firstArrearsPaidRate:[0, 100], socialPaid:[0, MONEY_MAX], socialActualBase:[0, MONEY_MAX],
+  contractPay:[0, MONEY_MAX], firstArrearsPaidRate:[0, 100], socialPaid:[0, MONEY_MAX], socialActualBase:[0, MONEY_MAX], socialPersonalPaid:[0, MONEY_MAX],
   socialBase:[0, MONEY_MAX], socialRate:[0, 100], socialPensionRate:[0, 100], socialUnemploymentRate:[0, 100],
   socialInjuryRate:[0, 100], socialMaternityRate:[0, 100], socialMedicalRate:[0, 100], fundPaid:[0, MONEY_MAX],
   socialPersonalPensionRate:[0, 100], socialPersonalUnemploymentRate:[0, 100], socialPersonalInjuryRate:[0, 100],
-  socialPersonalMaternityRate:[0, 100], socialPersonalMedicalRate:[0, 100], fundBase:[0, MONEY_MAX], fundRate:[0, 100],
+  socialPersonalMaternityRate:[0, 100], socialPersonalMedicalRate:[0, 100], fundBase:[0, MONEY_MAX], fundActualBase:[0, MONEY_MAX], fundPersonalPaid:[0, MONEY_MAX], fundRate:[0, 100],
   fundPersonalRate:[0, 100], reimbursementAmount:[0, MONEY_MAX], annualLeaveWorkYears:[0, 100],
   annualLeaveTakenDays:[0, 100_000], annualLeavePriorUnusedDays:[0, 100_000], annualLeaveAveragePay:[0, MONEY_MAX],
   overtimeWageBase:[0, MONEY_MAX], weekdayOvertimeHours:[0, 100_000], restDayOvertimeHours:[0, 100_000],
@@ -87,6 +87,9 @@ const validateRow = (value, index) => {
 
   for (const key of ["normalPay", "paid", "duePay", "arrears", "contractPay", "socialPaid", "socialBase", "socialDue", "fundPaid", "fundBase", "fundDue"]) {
     result[key] = checkedNumber(row[key], `${label}${key}`, 0, MONEY_MAX);
+  }
+  for (const key of ["wageDeduction", "socialActualBase", "socialPersonalPaid", "fundActualBase", "fundPersonalPaid"]) {
+    result[key] = row[key] === undefined ? 0 : checkedNumber(row[key], `${label}${key}`, 0, MONEY_MAX);
   }
   if (row.socialRate !== undefined) result.socialRate = checkedNumber(row.socialRate, `${label}社保比例`, 0, 100);
   if (row.fundRate !== undefined) result.fundRate = checkedNumber(row.fundRate, `${label}公积金比例`, 0, 100);

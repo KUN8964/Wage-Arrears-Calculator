@@ -45,11 +45,11 @@ test("keeps calculator data local and portable", async () => {
   assert.doesNotMatch(page, /<span>每月应发工资<\/span>/);
   assert.doesNotMatch(page, /<span>每月已发工资<\/span>/);
   assert.match(page, /monthCountBetween/);
-  assert.match(page, /尚欠 \{socialMonths\} 个月/);
+  assert.match(page, /社保账户预计应补合计/);
   assert.match(page, /socialPaid.*socialBase.*socialRate/);
   assert.match(page, /effectiveSocialStart/);
   assert.match(page, /effectiveFundStart/);
-  assert.match(page, /实缴 \{socialPaidMonths\} 个月/);
+  assert.match(page, /personalSocialGap/);
   assert.match(page, /socialDueFor/);
   assert.match(page, /fundDueFor/);
   assert.match(page, /查看精算明细/);

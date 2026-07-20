@@ -20,10 +20,13 @@ test("generates prorated first and final months with deterministic status", () =
 test("applies paid contribution periods independently", () => {
   const [row] = generateMonthlyLedger({
     employmentDate:"2026-01-01",cutoffDate:"2026-01-31",contractPay:20_000,idStart:1,
-    social:{enabled:true,hasPaid:true,startMonth:"2026-01",endMonth:"2026-01",actualMonthly:1_440.954,base:4_986,rate:28.9},
+    social:{enabled:true,hasPaid:true,startMonth:"2026-01",endMonth:"2026-01",actualMonthly:1_440.954,actualBase:4_986,personalActualMonthly:523.53,base:4_986,rate:28.9},
     fund:{enabled:true,hasPaid:false,base:20_000,rate:5},
   });
   assert.equal(row.socialPaid, 1_440.95);
+  assert.equal(row.socialActualBase, 4_986);
+  assert.equal(row.socialPersonalPaid, 523.53);
+  assert.equal(row.wageDeduction, 0);
   assert.equal(row.socialDue, 0);
   assert.equal(row.fundDue, 1_000);
   assert.equal(row.status, "未结清");

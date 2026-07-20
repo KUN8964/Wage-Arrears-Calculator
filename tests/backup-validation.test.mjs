@@ -54,6 +54,17 @@ test("accepts and validates the v15 monthly-row cutoff snapshot", () => {
   assert.throws(() => validateBackupPayload(payload), BackupValidationError);
 });
 
+test("accepts v16 payslip deductions, inferred-base fields and wage deductions", () => {
+  const payload = validBackup();
+  payload.version = 16;
+  Object.assign(payload.setup, { socialPersonalPaid:523.53, fundPersonalPaid:125, fundActualBase:2_500 });
+  Object.assign(payload.rows[0], { wageDeduction:1_379.31, socialActualBase:4_986, socialPersonalPaid:523.53, fundActualBase:2_500, fundPersonalPaid:125 });
+  const result = validateBackupPayload(payload);
+  assert.equal(result.setup.socialPersonalPaid, 523.53);
+  assert.equal(result.rows[0].wageDeduction, 1_379.31);
+  assert.equal(result.rows[0].fundActualBase, 2_500);
+});
+
 test("keeps validated legacy fields available for the existing migration path", () => {
   const payload = validBackup();
   delete payload.rows[0].wageMonth;
@@ -96,7 +107,7 @@ test("rejects impossible dates, negative amounts and unknown claims", () => {
 
 test("rejects unsupported versions, excessive rows and oversized files", () => {
   const future = validBackup();
-  future.version = 16;
+  future.version = 17;
   assert.throws(() => validateBackupPayload(future), BackupValidationError);
 
   const excessive = validBackup();
