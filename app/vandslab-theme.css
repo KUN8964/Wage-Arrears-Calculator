@@ -1613,6 +1613,8 @@
   .termination-notice-reasons > label { min-height: 82px; padding: var(--vd-space-3) var(--vd-space-4); display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--vd-space-3); border-top: 1px solid var(--vd-line-light); background: var(--vd-color-paper); cursor: pointer; }
   .termination-notice-reasons > label:first-of-type { border-top: 0; }
   .termination-notice-reasons > label.selected { background: color-mix(in srgb, var(--vd-surface-action) 30%, var(--vd-color-paper)); }
+  .termination-notice-fact { min-height: 82px; padding: var(--vd-space-3) var(--vd-space-4); display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--vd-space-3); background: color-mix(in srgb, var(--vd-surface-action) 30%, var(--vd-color-paper)); }
+  .termination-notice-fact > b { width: 20px; height: 20px; display: grid; place-items: center; background: var(--vd-color-ink); color: var(--vd-color-paper); font-size: .8rem; line-height: 1; }
   .termination-notice-reasons input { width: 20px; height: 20px; margin: 0; accent-color: var(--vd-color-ink); }
   .termination-notice-reasons span,.termination-notice-reasons strong,.termination-notice-reasons small { min-width: 0; display: block; }
   .termination-notice-reasons strong { color: var(--vd-text-on-light); font-size: var(--vd-text-label); }
@@ -1650,5 +1652,6 @@
   .termination-notice-builder > header,.termination-notice-form,.termination-notice-preview { padding: var(--vd-space-4); }
   .termination-notice-fields,.termination-notice-actions { grid-template-columns: 1fr; }
   .termination-notice-reasons > label { grid-template-columns: 20px minmax(0, 1fr); }
+  .termination-notice-fact { grid-template-columns: 20px minmax(0, 1fr); }
   .termination-notice-reasons i { grid-column: 2; justify-self: start; }
 }

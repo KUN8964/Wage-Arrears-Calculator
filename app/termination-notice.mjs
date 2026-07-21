@@ -62,12 +62,14 @@ const rightList = rights => rights
   .filter(Boolean);
 
 /**
- * @param {{employeeName?:string, companyName?:string, employmentDate?:string, noticeDate?:string, contact?:string, reasons?:Array<keyof typeof TERMINATION_NOTICE_REASONS>, rights?:Array<keyof typeof TERMINATION_NOTICE_RIGHTS>}} input
+ * @param {{employeeName?:string, companyName?:string, employmentDate?:string, contractEnd?:string, continuedEmploymentUntil?:string, noticeDate?:string, contact?:string, reasons?:Array<keyof typeof TERMINATION_NOTICE_REASONS>, rights?:Array<keyof typeof TERMINATION_NOTICE_RIGHTS>}} input
  */
 export const buildTerminationNotice = ({
   employeeName,
   companyName,
   employmentDate,
+  contractEnd,
+  continuedEmploymentUntil,
   noticeDate,
   contact,
   reasons = [],
@@ -82,6 +84,18 @@ export const buildTerminationNotice = ({
   const safeReasons = reasonParagraphs.length ? reasonParagraphs : ["（尚未选择解除理由，请勿直接发送本通知。）"];
   const selectedRights = rightList(rights);
   const rightsParagraphs = selectedRights.map(item => item.paragraph);
+  const contractEndValue = String(contractEnd || "");
+  const continuedEmploymentUntilValue = String(continuedEmploymentUntil || "");
+  const continuedAfterExpiry = /^\d{4}-\d{2}-\d{2}$/.test(contractEndValue)
+    && /^\d{4}-\d{2}-\d{2}$/.test(continuedEmploymentUntilValue)
+    && contractEndValue < continuedEmploymentUntilValue;
+  const factParagraphs = continuedAfterExpiry ? [
+    `双方书面劳动合同约定期限于${displayDate(contractEndValue)}届满。合同期满后，双方未办理劳动关系终止或解除手续，亦未另行续订书面劳动合同；本人仍持续向贵公司提供劳动，贵公司亦继续接受本人提供的劳动，至少持续至${displayDate(continuedEmploymentUntilValue)}。`,
+  ] : [];
+  const hasFacts = factParagraphs.length > 0;
+  const reasonSection = hasFacts ? "二" : "一";
+  const rightsSection = hasFacts ? "三" : "二";
+  const closingSection = hasFacts ? (rightsParagraphs.length ? "四" : "三") : (rightsParagraphs.length ? "三" : "二");
   const intro = `本人${employee}自${displayEmploymentDate(employmentDate)}起与贵公司建立劳动关系。现因下列事由，依法向贵公司作出解除劳动合同的通知：`;
   const effective = `基于上述事实，本人依据${basis || "（请核对并填写法律依据）"}解除双方劳动合同。本通知自送达贵公司之日起生效。`;
   const requests = [
@@ -98,11 +112,12 @@ export const buildTerminationNotice = ({
     "",
     intro,
     "",
-    "## 一、解除事由",
+    ...(hasFacts ? ["## 一、劳动关系延续事实", "", ...factParagraphs.flatMap((paragraph, index) => [`${index + 1}. ${paragraph}`, ""])] : []),
+    `## ${reasonSection}、解除事由`,
     "",
     ...safeReasons.flatMap((paragraph, index) => [`${index + 1}. ${paragraph}`, ""]),
-    ...(rightsParagraphs.length ? ["## 二、随通知一并列明的待处理权益事项", "", ...rightsParagraphs.flatMap((paragraph, index) => [`${index + 1}. ${paragraph}`, ""])] : []),
-    `## ${rightsParagraphs.length ? "三" : "二"}、解除通知与后续事项`,
+    ...(rightsParagraphs.length ? [`## ${rightsSection}、随通知一并列明的待处理权益事项`, "", ...rightsParagraphs.flatMap((paragraph, index) => [`${index + 1}. ${paragraph}`, ""])] : []),
+    `## ${closingSection}、解除通知与后续事项`,
     "",
     effective,
     "",
@@ -113,13 +128,14 @@ export const buildTerminationNotice = ({
     contactText ? `联系方式：${contactText}` : "联系方式：________________",
     `日期：${dateText}`,
   ].join("\n");
+  const factHtml = factParagraphs.map((paragraph, index) => `<li>${index + 1}. ${escapeHtml(paragraph)}</li>`).join("");
   const reasonHtml = safeReasons.map((paragraph, index) => `<li>${index + 1}. ${escapeHtml(paragraph)}</li>`).join("");
   const rightsHtml = rightsParagraphs.map((paragraph, index) => `<li>${index + 1}. ${escapeHtml(paragraph)}</li>`).join("");
   const requestHtml = requests.map((paragraph, index) => `<li>${index + 1}. ${escapeHtml(paragraph)}</li>`).join("");
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>解除劳动合同通知书</title><style>
     @page{size:A4;margin:25mm 26mm 24mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#161616;font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",Arial,sans-serif;font-size:11pt;line-height:1.78}main{max-width:160mm;margin:0 auto}h1{margin:8mm 0 12mm;text-align:center;font-size:22pt;line-height:1.25;letter-spacing:.08em}h2{margin:7mm 0 3mm;font-size:12pt;line-height:1.5}p{margin:0 0 4mm;text-align:justify}ol{margin:0 0 5mm;padding:0;list-style:none}li{margin:0 0 2.5mm;text-align:justify}.recipient{margin-top:4mm;font-weight:700}.signature{width:72mm;margin:14mm 0 0 auto}.signature p{margin:0 0 3mm;text-align:left}
-  </style></head><body><main><h1>解除劳动合同通知书</h1><p class="recipient">致：${escapeHtml(company)}</p><p>${escapeHtml(intro)}</p><h2>一、解除事由</h2><ol>${reasonHtml}</ol>${rightsParagraphs.length ? `<h2>二、随通知一并列明的待处理权益事项</h2><ol>${rightsHtml}</ol>` : ""}<h2>${rightsParagraphs.length ? "三" : "二"}、解除通知与后续事项</h2><p>${escapeHtml(effective)}</p><ol>${requestHtml}</ol><p>本人愿依法配合办理必要的工作交接。本通知一式两份，劳动者与用人单位各留存一份。</p><div class="signature"><p>通知人：${escapeHtml(employee)}</p><p>联系方式：${escapeHtml(contactText || "________________")}</p><p>日期：${escapeHtml(dateText)}</p></div></main></body></html>`;
-  return { employee, company, intro, effective, requests, reasonParagraphs:safeReasons, rightsParagraphs, markdown, html };
+  </style></head><body><main><h1>解除劳动合同通知书</h1><p class="recipient">致：${escapeHtml(company)}</p><p>${escapeHtml(intro)}</p>${hasFacts ? `<h2>一、劳动关系延续事实</h2><ol>${factHtml}</ol>` : ""}<h2>${reasonSection}、解除事由</h2><ol>${reasonHtml}</ol>${rightsParagraphs.length ? `<h2>${rightsSection}、随通知一并列明的待处理权益事项</h2><ol>${rightsHtml}</ol>` : ""}<h2>${closingSection}、解除通知与后续事项</h2><p>${escapeHtml(effective)}</p><ol>${requestHtml}</ol><p>本人愿依法配合办理必要的工作交接。本通知一式两份，劳动者与用人单位各留存一份。</p><div class="signature"><p>通知人：${escapeHtml(employee)}</p><p>联系方式：${escapeHtml(contactText || "________________")}</p><p>日期：${escapeHtml(dateText)}</p></div></main></body></html>`;
+  return { employee, company, intro, effective, requests, factParagraphs, reasonParagraphs:safeReasons, rightsParagraphs, markdown, html };
 };
 
 export const safeTerminationNoticeFileName = ({ employeeName, noticeDate }) => {

@@ -10,6 +10,8 @@ test("routes contribution gaps to administrative verification before arbitration
   assert.match(plan.routes[0].description, /分别进入对应行政核查渠道/);
   assert.match(plan.routes[0].steps.join("\n"), /12333/);
   assert.match(plan.routes[0].steps.join("\n"), /12329/);
+  assert.match(plan.routes[0].steps.join("\n"), /先通过人社\/社保或税务渠道核实社保缴费基数和个税工资薪金收入/);
+  assert.match(plan.routes[0].steps.join("\n"), /公积金缴存基数最终由公积金中心按工资口径和当地规则认定/);
   assert.match(plan.routes[0].caution, /不是投诉的全国统一法定前置程序/);
 });
 

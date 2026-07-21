@@ -577,7 +577,7 @@ test("generates personalized Markdown and Word notices when article 38 notice is
     version:15,
     caseName:"解除通知下载测试",
     setup:{
-      employmentStatus:"departed", employmentDate:"2025-01-01", departureDate:"2026-07-17", cutoffDate:"2026-07-17", contractPay:20_000,
+      employmentStatus:"departed", employmentDate:"2025-01-01", departureDate:"2026-07-17", cutoffDate:"2026-07-17", contractEnd:"2026-06-30", contractPay:20_000,
       arrearsStartMonth:"2026-01", firstArrearsPaidRate:0,
       terminationType:"forced", terminationAveragePay:20_000,
       personalResignationSigned:"no", forcedNoticeSent:"no", forcedNoticeProof:"unknown",
@@ -597,6 +597,8 @@ test("generates personalized Markdown and Word notices when article 38 notice is
 
   await expect(page.getByRole("heading", { name:"生成解除劳动合同通知书" })).toBeVisible();
   await expect(page.getByText("未及时足额支付劳动报酬", { exact:true })).toBeVisible();
+  await expect(page.getByText("劳动合同期满后继续提供劳动", { exact:true })).toBeVisible();
+  await expect(page.getByText(/合同于 2026-06-30 期满.*仍持续提供劳动至 2026-07-17/)).toBeVisible();
   const preloadedRights=page.getByRole("group", { name:"选择随通知一并列明的待处理权益" });
   for (const label of ["欠付工资", "社会保险核查补缴", "住房公积金核查补缴", "未支付的工作费用报销", "未支付的加班工资"]) {
     await expect(preloadedRights.getByText(label, { exact:true })).toBeVisible();
@@ -619,6 +621,8 @@ test("generates personalized Markdown and Word notices when article 38 notice is
   for await (const chunk of markdownStream) markdownChunks.push(Buffer.from(chunk));
   const markdown = Buffer.concat(markdownChunks).toString("utf8");
   expect(markdown).toContain("示例科技有限公司");
+  expect(markdown).toContain("一、劳动关系延续事实");
+  expect(markdown).toContain("合同期满后，双方未办理劳动关系终止或解除手续");
   expect(markdown).toContain("第三十八条第一款第二项");
   expect(markdown).toContain("随通知一并列明的待处理权益事项");
   expect(markdown).toContain("住房公积金不等同于社会保险");

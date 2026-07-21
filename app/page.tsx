@@ -352,11 +352,17 @@ export default function Home() {
     employeeName:setup.terminationEmployeeName,
     companyName:setup.terminationCompanyName,
     employmentDate:setup.employmentDate,
+    contractEnd:doublePayEnabled?setup.contractEnd:"",
+    continuedEmploymentUntil:doublePayEnabled?setup.cutoffDate:"",
     noticeDate:terminationNoticeDate,
     contact:setup.terminationNoticeContact,
     reasons:terminationNoticeReasons,
     rights:terminationNoticeRights,
   });
+  const hasTerminationNoticeFacts=terminationNotice.factParagraphs.length>0;
+  const terminationNoticeReasonSection=hasTerminationNoticeFacts?"二":"一";
+  const terminationNoticeRightsSection=hasTerminationNoticeFacts?"三":"二";
+  const terminationNoticeClosingSection=hasTerminationNoticeFacts?(terminationNotice.rightsParagraphs.length>0?"四":"三"):(terminationNotice.rightsParagraphs.length>0?"三":"二");
   const terminationNoticeBlocked=setup.personalResignationSigned==="yes";
   const terminationNoticeReady=Boolean(setup.terminationEmployeeName.trim()&&setup.terminationCompanyName.trim()&&terminationNoticeReasons.length&&!terminationNoticeBlocked);
   const reportNumber=`WBC-${(setup.cutoffDate||todayInputValue()).slice(0,7).replace("-","")}-${String(Math.max(1,rows.length)).padStart(3,"0")}`;
@@ -643,6 +649,10 @@ export default function Home() {
                         return <label key={option.key} className={checked?"selected":""}><input type="checkbox" checked={checked} onChange={e=>setTerminationNoticeReasonOverrides(current=>({...current,[option.key]:e.target.checked}))}/><span><strong>{option.label}</strong><small>{option.description}</small></span><i>{option.automatic?"系统推定":"人工复核"}</i></label>;
                       }):<p>当前测算尚未形成可自动带入的欠薪或未缴社保事实，请不要使用空白解除理由直接发送通知。</p>}
                     </fieldset>
+                    {hasTerminationNoticeFacts&&<fieldset className="termination-notice-reasons termination-notice-facts">
+                      <legend>自动写入的劳动关系延续事实</legend>
+                      <div className="termination-notice-fact"><b aria-hidden="true">✓</b><span><strong>劳动合同期满后继续提供劳动</strong><small>合同于 {setup.contractEnd} 期满，此后未办理终止、解除或续签手续，仍持续提供劳动至 {setup.cutoffDate}；该内容作为事实背景写入，不单独作为第 38 条解除事由。</small></span><i>事实背景</i></div>
+                    </fieldset>}
                     {terminationNoticeRightOptions.length>0&&<fieldset className="termination-notice-reasons termination-notice-rights">
                       <legend>选择随通知一并列明的待处理权益</legend>
                       {terminationNoticeRightOptions.map(option=>{
@@ -667,10 +677,11 @@ export default function Home() {
                     <h4>解除劳动合同通知书</h4>
                     <b>致：{terminationNotice.company}</b>
                     <p>{terminationNotice.intro}</p>
-                    <h5>一、解除事由</h5>
+                    {hasTerminationNoticeFacts&&<><h5>一、劳动关系延续事实</h5><ol>{terminationNotice.factParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol></>}
+                    <h5>{terminationNoticeReasonSection}、解除事由</h5>
                     <ol>{terminationNotice.reasonParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol>
-                    {terminationNotice.rightsParagraphs.length>0&&<><h5>二、随通知一并列明的待处理权益事项</h5><ol>{terminationNotice.rightsParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol></>}
-                    <h5>{terminationNotice.rightsParagraphs.length>0?"三":"二"}、解除通知与后续事项</h5>
+                    {terminationNotice.rightsParagraphs.length>0&&<><h5>{terminationNoticeRightsSection}、随通知一并列明的待处理权益事项</h5><ol>{terminationNotice.rightsParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol></>}
+                    <h5>{terminationNoticeClosingSection}、解除通知与后续事项</h5>
                     <p>{terminationNotice.effective}</p>
                     <ol>{terminationNotice.requests.map((request,index)=><li key={request}>{index+1}. {request}</li>)}</ol>
                     <div><p>通知人：{terminationNotice.employee}</p><p>日期：{terminationNoticeDate}</p></div>

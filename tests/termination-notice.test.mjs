@@ -45,6 +45,27 @@ test("keeps preloaded rights separate from article 38 termination reasons", () =
   assert.doesNotMatch(notice.html, /双倍工资差额|未休年休假工资报酬/);
 });
 
+test("records continued work after contract expiry as a fact instead of an article 38 reason", () => {
+  const notice = buildTerminationNotice({
+    employeeName:"张三",
+    companyName:"示例公司",
+    employmentDate:"2025-06-09",
+    contractEnd:"2026-06-08",
+    continuedEmploymentUntil:"2026-07-21",
+    noticeDate:"2026-07-21",
+    reasons:["wage"],
+  });
+  assert.equal(notice.factParagraphs.length, 1);
+  assert.match(notice.markdown, /一、劳动关系延续事实/);
+  assert.match(notice.markdown, /合同期满后，双方未办理劳动关系终止或解除手续/);
+  assert.match(notice.markdown, /至少持续至2026年7月21日/);
+  assert.match(notice.markdown, /二、解除事由/);
+  assert.match(notice.html, /劳动关系延续事实/);
+
+  const notExpired = buildTerminationNotice({contractEnd:"2026-07-21",continuedEmploymentUntil:"2026-07-21",reasons:["wage"]});
+  assert.equal(notExpired.factParagraphs.length, 0);
+});
+
 test("creates a filesystem-safe notice filename", () => {
   assert.equal(safeTerminationNoticeFileName({employeeName:"张/三",noticeDate:"2026-07-17"}), "张_三-解除劳动合同通知书-2026-07-17");
 });
