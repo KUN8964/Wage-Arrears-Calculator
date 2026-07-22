@@ -1597,7 +1597,7 @@
   .termination-notice-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vd-space-4); }
   .termination-notice-fields label { min-width: 0; }
   .termination-notice-fields label > span { display: block; margin-bottom: var(--vd-space-2); color: var(--vd-type-support-on-light); font-size: var(--vd-text-label); font-weight: 800; }
-  .termination-notice-fields input {
+  .termination-notice-fields input,.termination-notice-fields select {
     width: 100%;
     min-height: 52px;
     padding: 0 var(--vd-space-4);
@@ -1607,6 +1607,7 @@
     color: var(--vd-text-on-dark);
     font: inherit;
   }
+  .termination-notice-fields select { color-scheme: dark; }
   .termination-notice-fields small { display: block; margin-top: var(--vd-space-2); color: var(--vd-type-caption-on-light); font-size: var(--vd-text-caption); line-height: 1.55; }
   .termination-notice-reasons { min-width: 0; margin: var(--vd-space-5) 0 0; padding: 0; border: 1px solid var(--vd-color-ink); }
   .termination-notice-reasons legend { width: 100%; padding: var(--vd-space-3) var(--vd-space-4); border-bottom: 1px solid var(--vd-color-ink); background: var(--vd-panel-muted); font-size: var(--vd-text-label); font-weight: 800; }
@@ -1640,11 +1641,28 @@
   .termination-notice-preview li { margin-bottom: var(--vd-space-2); text-align: justify; }
   .termination-notice-preview > div { width: 60%; margin: var(--vd-space-6) 0 0 auto; }
   .termination-notice-preview > div p { text-align: left; }
+  .arbitration-application-builder { margin-top: var(--vd-space-8); }
+  .arbitration-application-layout { grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr); }
+  .arbitration-form-heading { margin: var(--vd-space-6) 0 var(--vd-space-3); padding-bottom: var(--vd-space-2); border-bottom: 1px solid var(--vd-line-light); color: var(--vd-text-on-light); font-size: var(--vd-text-label); }
+  .arbitration-application-form > .arbitration-form-heading:first-child { margin-top: 0; }
+  .arbitration-additional-facts { display: block; margin-top: var(--vd-space-5); }
+  .arbitration-additional-facts > span { display: block; margin-bottom: var(--vd-space-2); color: var(--vd-type-support-on-light); font-size: var(--vd-text-label); font-weight: 800; }
+  .arbitration-additional-facts textarea { width: 100%; min-height: 132px; resize: vertical; padding: var(--vd-space-3) var(--vd-space-4); border: 1px solid var(--vd-color-ink); border-radius: 0; background: var(--vd-surface-stage); color: var(--vd-text-on-dark); font: inherit; line-height: 1.65; }
+  .arbitration-materials { margin-top: var(--vd-space-5); padding: var(--vd-space-5); border: 1px solid var(--vd-color-ink); background: var(--vd-color-acid); color: var(--vd-text-on-light); }
+  .arbitration-materials > div > span { color: var(--vd-type-caption-on-light); font-size: var(--vd-text-caption); font-weight: 800; letter-spacing: .12em; }
+  .arbitration-materials h4 { margin: var(--vd-space-2) 0 var(--vd-space-4); font-size: 1.1rem; }
+  .arbitration-materials ol { margin: 0; padding-left: 1.5em; display: grid; gap: var(--vd-space-2); }
+  .arbitration-materials p { margin: var(--vd-space-4) 0 var(--vd-space-3); color: var(--vd-type-support-on-light); font-size: var(--vd-text-caption); line-height: 1.65; }
+  .arbitration-materials a { color: var(--vd-text-on-light); font-size: var(--vd-text-label); font-weight: 800; text-underline-offset: 3px; }
+  .arbitration-application-preview { font-family: "Songti SC","STSong","Noto Serif CJK SC",serif; }
+  .arbitration-application-preview h4 { font-size: 1.35rem; letter-spacing: .12em; }
+  .arbitration-application-preview .arbitration-preview-committee { margin-left: 2em; }
 }
 
 @media screen and (max-width: 1050px) {
   .termination-notice-builder > header { align-items: flex-start; flex-direction: column; }
   .termination-notice-layout { grid-template-columns: 1fr; }
+  .arbitration-application-layout { grid-template-columns: 1fr; }
   .termination-notice-form { border-right: 0; border-bottom: 1px solid var(--vd-color-ink); }
 }
 

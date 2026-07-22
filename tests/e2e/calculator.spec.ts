@@ -647,3 +647,63 @@ test("generates personalized Markdown and Word notices when article 38 notice is
   expect(layout.width).toBeGreaterThan(700);
   expect(layout.scrollWidth).toBe(layout.clientWidth);
 });
+
+test("generates a complete labor-arbitration application from calculated claims", async ({ page }) => {
+  const arbitrationBackup = {
+    version:16,
+    caseName:"劳动仲裁申请书测试",
+    setup:{
+      employmentStatus:"departed",employmentDate:"2025-01-01",departureDate:"2026-07-17",cutoffDate:"2026-07-17",contractPay:20_000,
+      arrearsStartMonth:"2026-01",firstArrearsPaidRate:0,
+    },
+    rowsCutoffDate:"2026-07-17",
+    selectedClaims:["wage","social","fund"],
+    flowStep:"results",
+    doubleRule:{enabled:false,contractEnd:"",continuedUntil:""},
+    rows:[validRow],
+  };
+  await page.locator('input[type="file"]').setInputFiles({
+    name:"arbitration-application.json",
+    mimeType:"application/json",
+    buffer:Buffer.from(JSON.stringify(arbitrationBackup)),
+  });
+
+  await expect(page.getByRole("heading", {name:"生成劳动人事争议仲裁申请书"})).toBeVisible();
+  await expect(page.getByText("拖欠工资", {exact:true})).toBeVisible();
+  await expect(page.getByText(/社保和住房公积金补缴需分别进入对应行政核查渠道/)).toBeVisible();
+  await expect(page.getByRole("heading", {name:"劳动仲裁资料准备清单"})).toBeVisible();
+  await expect(page.getByText(/一式三份准备/)).toBeVisible();
+  await expect(page.getByRole("link", {name:/国家企业信用信息公示系统/})).toHaveAttribute("href", "https://www.gsxt.gov.cn/");
+  await page.getByLabel("仲裁申请人姓名").fill("张三");
+  await page.getByLabel("仲裁申请人性别").selectOption("男");
+  await page.getByLabel("仲裁申请人出生日期").fill("1990-01-02");
+  await page.getByLabel("仲裁申请人身份证件号码").fill("330100199001020000");
+  await page.getByLabel("仲裁申请人住所").fill("杭州市甲路1号");
+  await page.getByLabel("仲裁申请人送达地址").fill("杭州市乙路2号");
+  await page.getByLabel("仲裁申请人联系电话").fill("13800000000");
+  await page.getByLabel("仲裁申请人工作岗位").fill("产品经理");
+  await page.getByLabel("仲裁被申请人单位全称").fill("示例科技有限公司");
+  await page.getByLabel("仲裁被申请人注册地址").fill("杭州市丙路3号");
+  await page.getByLabel("仲裁被申请人负责人", {exact:true}).fill("李四");
+  await page.getByLabel("仲裁被申请人联系电话").fill("0571-88888888");
+  await page.getByLabel("受理劳动仲裁委员会").fill("杭州市某区劳动人事争议仲裁委员会");
+
+  const builder=page.locator(".arbitration-application-builder");
+  const markdownButton=builder.getByRole("button", {name:"下载 Markdown"});
+  await expect(markdownButton).toBeEnabled();
+  const downloadPromise=page.waitForEvent("download");
+  await markdownButton.click();
+  const download=await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^张三-劳动人事争议仲裁申请书-\d{4}-\d{2}-\d{2}\.md$/);
+  const stream=await download.createReadStream();
+  const chunks:Buffer[]=[];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const markdown=Buffer.concat(chunks).toString("utf8");
+  expect(markdown).toContain("杭州市某区劳动人事争议仲裁委员会");
+  expect(markdown).toContain("拖欠的工资人民币20,000.00元");
+  expect(markdown).not.toMatch(/请求裁决.*社会保险|请求裁决.*住房公积金/);
+
+  await page.setViewportSize({width:390,height:844});
+  const mobileLayout=await builder.evaluate(element=>({scrollWidth:element.scrollWidth,clientWidth:element.clientWidth}));
+  expect(mobileLayout.scrollWidth).toBe(mobileLayout.clientWidth);
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ARBITRATION_CLAIMS, ARBITRATION_PREPARATION_MATERIALS, buildArbitrationApplication, safeArbitrationApplicationFileName } from "./arbitration-application.mjs";
 import { assertBackupFileSize, BackupValidationError, validateBackupPayload } from "./backup-validation.mjs";
 import { employmentSnapshotFor, restoredRowsNeedReview } from "./case-migration.mjs";
 import { parseIsoDateLocal } from "./date-utils.mjs";
@@ -22,6 +23,19 @@ import { SplitText } from "./split-text";
 
 type TerminationNoticeReason = keyof typeof TERMINATION_NOTICE_REASONS;
 type TerminationNoticeRight = keyof typeof TERMINATION_NOTICE_RIGHTS;
+type ArbitrationClaim = keyof typeof ARBITRATION_CLAIMS;
+type ArbitrationForm = {
+  applicantName:string; applicantGender:string; applicantBirthDate:string; applicantIdNumber:string;
+  applicantAddress:string; applicantServiceAddress:string; applicantPhone:string; applicantPosition:string;
+  respondentName:string; respondentRegisteredAddress:string; respondentOfficeAddress:string;
+  respondentLegalRepresentative:string; respondentLegalRepresentativeTitle:string; respondentPhone:string;
+  committee:string; applicationDate:string; additionalFacts:string;
+};
+const emptyArbitrationForm:ArbitrationForm={
+  applicantName:"",applicantGender:"",applicantBirthDate:"",applicantIdNumber:"",applicantAddress:"",applicantServiceAddress:"",applicantPhone:"",applicantPosition:"",
+  respondentName:"",respondentRegisteredAddress:"",respondentOfficeAddress:"",respondentLegalRepresentative:"",respondentLegalRepresentativeTitle:"法定代表人",respondentPhone:"",
+  committee:"",applicationDate:"",additionalFacts:"",
+};
 
 const exampleRows: Row[] = [
   [1,"2025/06",0,"",0,"已结清",0,0,20000,384.96,4812,3979.256,250,2490,2101.2],
@@ -139,6 +153,8 @@ export default function Home() {
   const [restoreNotice, setRestoreNotice] = useState("");
   const [terminationNoticeReasonOverrides, setTerminationNoticeReasonOverrides] = useState<Partial<Record<TerminationNoticeReason, boolean>>>({});
   const [terminationNoticeRightOverrides, setTerminationNoticeRightOverrides] = useState<Partial<Record<TerminationNoticeRight, boolean>>>({});
+  const [arbitrationClaimOverrides, setArbitrationClaimOverrides] = useState<Partial<Record<ArbitrationClaim, boolean>>>({});
+  const [arbitrationForm, setArbitrationForm] = useState<ArbitrationForm>({...emptyArbitrationForm});
   const importInput = useRef<HTMLInputElement>(null);
 
   // Restore browser-only state once after hydration for this local-first app.
@@ -334,6 +350,49 @@ export default function Home() {
     forcedNoticeSent:setup.forcedNoticeSent,forcedNoticeProof:setup.forcedNoticeProof,
     workInjuryEnabled,
   }) as RightsPlan;
+  const arbitrationAmounts:Record<ArbitrationClaim,number>={
+    wage:wageEnabled?totals.arrears:0,
+    doublePay:doublePayEnabled?totals.double:0,
+    annualLeave:annualLeaveEnabled?annualLeaveTotal:0,
+    overtime:overtimeEnabled?overtimeTotal:0,
+    compTime:compTimeEnabled?compTimeTotal:0,
+    reimbursement:reimbursementEnabled?Number(setup.reimbursementAmount||0):0,
+    termination:terminationEnabled?terminationTotal:0,
+  };
+  const arbitrationClaimOptions=(Object.keys(ARBITRATION_CLAIMS) as ArbitrationClaim[])
+    .filter(key=>arbitrationAmounts[key]>0)
+    .map(key=>({key,...ARBITRATION_CLAIMS[key],amount:arbitrationAmounts[key],automatic:key==="reimbursement"?false:key==="termination"?(setup.employmentStatus==="departed"||setup.forcedNoticeSent==="yes"):true}));
+  const arbitrationSelectedClaims=arbitrationClaimOptions.filter(option=>arbitrationClaimOverrides[option.key]??option.automatic).map(option=>option.key);
+  const arbitrationApplicantName=arbitrationForm.applicantName||setup.terminationEmployeeName;
+  const arbitrationApplicantPhone=arbitrationForm.applicantPhone||setup.terminationNoticeContact;
+  const arbitrationRespondentName=arbitrationForm.respondentName||setup.terminationCompanyName;
+  const arbitrationApplicationDate=arbitrationForm.applicationDate||todayInputValue();
+  const arbitrationEvidence=[
+    "申请人身份证明、通讯地址和联系电话材料",
+    "被申请人工商登记或其他主体登记信息",
+    "劳动合同、入职材料、工作证、考勤或其他劳动关系证明",
+    "工资条、银行工资流水、工资确认记录及欠付工资明细",
+    arbitrationSelectedClaims.includes("doublePay")?"原劳动合同及合同期满后继续工作、单位继续用工的证据":"",
+    arbitrationSelectedClaims.includes("annualLeave")?"累计工作年限、年休假安排、考勤和未休假记录":"",
+    arbitrationSelectedClaims.includes("overtime")||arbitrationSelectedClaims.includes("compTime")?"考勤、排班、加班审批、工作成果及补休记录":"",
+    arbitrationSelectedClaims.includes("reimbursement")?"报销申请、发票、审批记录及工作任务证明":"",
+    arbitrationSelectedClaims.includes("termination")?"解除或终止通知、送达证明、离职文件及经济补偿计算明细":"",
+  ].filter(Boolean);
+  const arbitrationApplication=buildArbitrationApplication({
+    applicant:{name:arbitrationApplicantName,gender:arbitrationForm.applicantGender,birthDate:arbitrationForm.applicantBirthDate,idNumber:arbitrationForm.applicantIdNumber,address:arbitrationForm.applicantAddress,serviceAddress:arbitrationForm.applicantServiceAddress,phone:arbitrationApplicantPhone,position:arbitrationForm.applicantPosition},
+    respondent:{name:arbitrationRespondentName,registeredAddress:arbitrationForm.respondentRegisteredAddress,officeAddress:arbitrationForm.respondentOfficeAddress,legalRepresentative:arbitrationForm.respondentLegalRepresentative,legalRepresentativeTitle:arbitrationForm.respondentLegalRepresentativeTitle,phone:arbitrationForm.respondentPhone},
+    committee:arbitrationForm.committee,applicationDate:arbitrationApplicationDate,
+    employmentDate:setup.employmentDate,employmentStatus:setup.employmentStatus,departureDate:setup.departureDate,cutoffDate:setup.cutoffDate,contractEnd:setup.contractEnd,contractPay:setup.contractPay,forcedNoticeSent:setup.forcedNoticeSent,
+    wagePeriod:wageArrearsPeriod,annualLeaveDays:String(annualLeaveUnusedDays),claims:arbitrationSelectedClaims,amounts:arbitrationAmounts,
+    additionalFacts:arbitrationForm.additionalFacts,evidence:arbitrationEvidence,
+  });
+  const arbitrationMissing=[
+    [arbitrationApplicantName,"申请人姓名"],[arbitrationForm.applicantGender,"性别"],[arbitrationForm.applicantBirthDate,"出生日期"],[arbitrationForm.applicantIdNumber,"身份证件号码"],
+    [arbitrationForm.applicantAddress,"住所"],[arbitrationForm.applicantServiceAddress,"送达地址"],[arbitrationApplicantPhone,"联系电话"],
+    [arbitrationRespondentName,"单位全称"],[arbitrationForm.respondentRegisteredAddress,"单位注册地址"],[arbitrationForm.respondentLegalRepresentative,"法定代表人或负责人"],
+    [arbitrationForm.respondentPhone,"单位联系电话"],[arbitrationForm.committee,"受理仲裁委员会"],[arbitrationSelectedClaims.length,"至少一项仲裁请求"],
+  ].filter(([value])=>!value).map(([,label])=>label);
+  const arbitrationApplicationReady=arbitrationMissing.length===0;
   const terminationNoticeReasonOptions:{key:TerminationNoticeReason;label:string;description:string;automatic:boolean}[]=[];
   if (wageEnabled&&totals.arrears>0) terminationNoticeReasonOptions.push({key:"wage",label:"未及时足额支付劳动报酬",description:`系统已测算欠薪 ¥ ${money(totals.arrears)}，默认写入通知。`,automatic:true});
   if (socialEnabled&&totals.social>0&&!setup.socialHasPaid) terminationNoticeReasonOptions.push({key:"socialUnpaid",label:"未依法缴纳社会保险费",description:"系统记录为未缴社保，默认写入通知；发送前仍需核对官方缴费记录。",automatic:true});
@@ -446,6 +505,27 @@ export default function Home() {
     popup.focus();
     window.setTimeout(()=>popup.print(),350);
   };
+  const downloadArbitrationApplication=(content:string,type:string,extension:string)=>{
+    if (!arbitrationApplicationReady) return;
+    const href=URL.createObjectURL(new Blob(["\ufeff",content],{type}));
+    const anchor=document.createElement("a");
+    anchor.href=href;
+    anchor.download=`${safeArbitrationApplicationFileName({applicantName:arbitrationApplicantName,applicationDate:arbitrationApplicationDate})}.${extension}`;
+    anchor.click();
+    window.setTimeout(()=>URL.revokeObjectURL(href),1000);
+  };
+  const updateArbitrationField=(key:keyof ArbitrationForm,value:string)=>setArbitrationForm(current=>({...current,[key]:value}));
+  const printArbitrationApplication=()=>{
+    if (!arbitrationApplicationReady) return;
+    const popup=window.open("","_blank","width=920,height=820");
+    if (!popup) { alert("浏览器阻止了文书预览窗口，请允许弹出窗口后重试。"); return; }
+    popup.opener=null;
+    popup.document.open();
+    popup.document.write(arbitrationApplication.html);
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(()=>popup.print(),350);
+  };
   const importData = (file?: File) => {
     if (!file) return;
     try {
@@ -479,6 +559,8 @@ export default function Home() {
         setSelectedClaims(data.selectedClaims as Claim[]);
         setTerminationNoticeReasonOverrides({});
         setTerminationNoticeRightOverrides({});
+        setArbitrationClaimOverrides({});
+        setArbitrationForm({...emptyArbitrationForm});
         setFlowStep(snapshot.needsStatusConfirmation || staleRows ? "basic" : "results");
         setRestoreNotice(snapshot.needsStatusConfirmation
           ? "这是旧版备份，原统计截止日不能证明已经离职。系统暂按在职处理，请确认任职状态后重新生成明细。"
@@ -530,7 +612,7 @@ export default function Home() {
     setFlowStep("results");
     setPrecisionOpen(false);
   };
-  const newCase = () => { if (!confirm("新建测算会清空当前页面数据，建议先导出备份。是否继续？")) return; setRows([blankRow()]); setDoubleRule(defaultRule); setSetup({...defaultSetup,cutoffDate:todayInputValue()}); setSelectedClaims([]); setFlowStep("basic"); setPrecisionOpen(false); setCaseName("我的欠款测算"); setRestoreNotice(""); setTerminationNoticeReasonOverrides({}); setTerminationNoticeRightOverrides({}); localStorage.removeItem("xinbao-rows"); localStorage.removeItem("xinbao-double-rule"); localStorage.removeItem("xinbao-meta"); };
+  const newCase = () => { if (!confirm("新建测算会清空当前页面数据，建议先导出备份。是否继续？")) return; setRows([blankRow()]); setDoubleRule(defaultRule); setSetup({...defaultSetup,cutoffDate:todayInputValue()}); setSelectedClaims([]); setFlowStep("basic"); setPrecisionOpen(false); setCaseName("我的欠款测算"); setRestoreNotice(""); setTerminationNoticeReasonOverrides({}); setTerminationNoticeRightOverrides({}); setArbitrationClaimOverrides({}); setArbitrationForm({...emptyArbitrationForm}); localStorage.removeItem("xinbao-rows"); localStorage.removeItem("xinbao-double-rule"); localStorage.removeItem("xinbao-meta"); };
 
   return <main className="app-shell">
     <a className="skip-link" href="#calculator">跳到测算表单</a>
@@ -848,6 +930,71 @@ export default function Home() {
       </article>)}</div>
       <details className="evidence-plan"><summary>查看本案证据清单 <span>{rightsPlan.evidence.length} 项</span></summary><ul>{rightsPlan.evidence.map((item:string)=><li key={item}>{item}</li>)}</ul><p>尽量保存官方PDF、盖章明细及聊天、邮件、录音的原始文件，不只保留裁剪后的截图。</p></details>
     </section>
+
+    {arbitrationClaimOptions.length>0&&<section className="termination-notice-builder arbitration-application-builder" aria-labelledby="arbitration-application-title">
+      <header><div><span>ARBITRATION APPLICATION / 仲裁文书</span><h3 id="arbitration-application-title">生成劳动人事争议仲裁申请书</h3></div><p>按参考模板的 A4 版式生成，并从当前测算预加载可进入劳动仲裁的请求。身份、送达地址和单位登记信息仍需本人填写核对。</p></header>
+      <div className="termination-notice-layout arbitration-application-layout">
+        <div className="termination-notice-form arbitration-application-form">
+          <h4 className="arbitration-form-heading">申请人信息</h4>
+          <div className="termination-notice-fields arbitration-fields">
+            <label><span>姓名</span><input aria-label="仲裁申请人姓名" value={arbitrationApplicantName} placeholder="申请人本人姓名" onChange={e=>updateArbitrationField("applicantName",e.target.value)}/></label>
+            <label><span>性别</span><select aria-label="仲裁申请人性别" value={arbitrationForm.applicantGender} onChange={e=>updateArbitrationField("applicantGender",e.target.value)}><option value="">请选择</option><option value="男">男</option><option value="女">女</option><option value="其他/不便说明">其他/不便说明</option></select></label>
+            <label><span>出生日期</span><input aria-label="仲裁申请人出生日期" type="date" value={arbitrationForm.applicantBirthDate} onChange={e=>updateArbitrationField("applicantBirthDate",e.target.value)}/></label>
+            <label><span>身份证件号码</span><input aria-label="仲裁申请人身份证件号码" value={arbitrationForm.applicantIdNumber} placeholder="按证件填写" onChange={e=>updateArbitrationField("applicantIdNumber",e.target.value)}/></label>
+            <label><span>住所</span><input aria-label="仲裁申请人住所" value={arbitrationForm.applicantAddress} placeholder="身份证或常住地址" onChange={e=>updateArbitrationField("applicantAddress",e.target.value)}/></label>
+            <label><span>通讯与文书送达地址</span><input aria-label="仲裁申请人送达地址" value={arbitrationForm.applicantServiceAddress} placeholder="确保能够接收仲裁文书" onChange={e=>updateArbitrationField("applicantServiceAddress",e.target.value)}/></label>
+            <label><span>联系电话</span><input aria-label="仲裁申请人联系电话" inputMode="tel" value={arbitrationApplicantPhone} onChange={e=>updateArbitrationField("applicantPhone",e.target.value)}/></label>
+            <label><span>工作岗位（可选）</span><input aria-label="仲裁申请人工作岗位" value={arbitrationForm.applicantPosition} placeholder="例如：产品经理" onChange={e=>updateArbitrationField("applicantPosition",e.target.value)}/></label>
+          </div>
+          <h4 className="arbitration-form-heading">被申请人信息</h4>
+          <div className="termination-notice-fields arbitration-fields">
+            <label><span>用人单位全称</span><input aria-label="仲裁被申请人单位全称" value={arbitrationRespondentName} placeholder="以工商登记信息为准" onChange={e=>updateArbitrationField("respondentName",e.target.value)}/></label>
+            <label><span>注册地址</span><input aria-label="仲裁被申请人注册地址" value={arbitrationForm.respondentRegisteredAddress} placeholder="以登记信息为准" onChange={e=>updateArbitrationField("respondentRegisteredAddress",e.target.value)}/></label>
+            <label><span>实际办公地址（可选）</span><input aria-label="仲裁被申请人办公地址" value={arbitrationForm.respondentOfficeAddress} placeholder="与注册地址相同可不填" onChange={e=>updateArbitrationField("respondentOfficeAddress",e.target.value)}/></label>
+            <label><span>法定代表人或主要负责人</span><input aria-label="仲裁被申请人负责人" value={arbitrationForm.respondentLegalRepresentative} onChange={e=>updateArbitrationField("respondentLegalRepresentative",e.target.value)}/></label>
+            <label><span>负责人职务</span><input aria-label="仲裁被申请人负责人职务" value={arbitrationForm.respondentLegalRepresentativeTitle} onChange={e=>updateArbitrationField("respondentLegalRepresentativeTitle",e.target.value)}/></label>
+            <label><span>单位联系电话</span><input aria-label="仲裁被申请人联系电话" inputMode="tel" value={arbitrationForm.respondentPhone} onChange={e=>updateArbitrationField("respondentPhone",e.target.value)}/></label>
+          </div>
+          <h4 className="arbitration-form-heading">受理与落款</h4>
+          <div className="termination-notice-fields arbitration-fields">
+            <label><span>受理仲裁委员会全称</span><input aria-label="受理劳动仲裁委员会" value={arbitrationForm.committee} placeholder="例如：杭州市××区劳动人事争议仲裁委员会" onChange={e=>updateArbitrationField("committee",e.target.value)}/><small>请按劳动合同履行地或用人单位所在地公开指南确认管辖</small></label>
+            <label><span>申请日期</span><input aria-label="仲裁申请日期" type="date" value={arbitrationApplicationDate} onChange={e=>updateArbitrationField("applicationDate",e.target.value)}/></label>
+          </div>
+          <fieldset className="termination-notice-reasons arbitration-claim-options">
+            <legend>确认写入申请书的仲裁请求</legend>
+            {arbitrationClaimOptions.map(option=>{
+              const checked=arbitrationClaimOverrides[option.key]??option.automatic;
+              return <label key={option.key} className={checked?"selected":""}><input type="checkbox" checked={checked} onChange={e=>setArbitrationClaimOverrides(current=>({...current,[option.key]:e.target.checked}))}/><span><strong>{option.label}</strong><small>当前初步测算 ¥ {money(option.amount)}；提交前请按证据、时效和当地裁审口径复核。</small></span><i>{option.automatic?"系统预选":"人工复核"}</i></label>;
+            })}
+            <p>社保和住房公积金补缴需分别进入对应行政核查渠道，系统不会把其公司或个人差额自动混入仲裁金额请求。工作费用报销和尚未实际解除时的经济补偿默认需要人工确认。</p>
+          </fieldset>
+          <label className="arbitration-additional-facts"><span>补充事实与理由（可选）</span><textarea aria-label="仲裁申请补充事实" value={arbitrationForm.additionalFacts} placeholder="例如：岗位变化、催告经过、解除通知送达方式等。只填写能够提供证据支持的事实。" onChange={e=>updateArbitrationField("additionalFacts",e.target.value)}/></label>
+          <aside className="arbitration-materials" aria-labelledby="arbitration-materials-title">
+            <div><span>MATERIALS / 提交材料</span><h4 id="arbitration-materials-title">劳动仲裁资料准备清单</h4></div>
+            <ol>{ARBITRATION_PREPARATION_MATERIALS.map(item=><li key={item}>{item}</li>)}</ol>
+            <p>上述材料准备复印件。单一被申请人的常见场景可先按一式三份准备，最终以受理仲裁委员会的要求为准。</p>
+            <a href="https://www.gsxt.gov.cn/" target="_blank" rel="noreferrer">前往国家企业信用信息公示系统查询企业工商信息 ↗</a>
+          </aside>
+          {arbitrationMissing.length>0&&<p className="termination-notice-help"><b>下载前请补充：</b>{arbitrationMissing.join("、")}。</p>}
+          <div className="termination-notice-actions">
+            <button type="button" disabled={!arbitrationApplicationReady} onClick={()=>downloadArbitrationApplication(arbitrationApplication.markdown,"text/markdown;charset=utf-8","md")}>下载 Markdown</button>
+            <button type="button" disabled={!arbitrationApplicationReady} onClick={()=>downloadArbitrationApplication(arbitrationApplication.html,"application/msword;charset=utf-8","doc")}>下载 Word（.doc）</button>
+            <button type="button" className="primary" disabled={!arbitrationApplicationReady} onClick={printArbitrationApplication}>生成 PDF</button>
+          </div>
+          <p className="termination-notice-footnote">申请书在浏览器本地生成；身份与送达信息不会写入测算备份，刷新页面或导入其他案件后会清空。提交前请根据被申请人人数准备副本，并按受理机构要求另附身份证明、主体登记信息、证据目录和证据材料。</p>
+        </div>
+        <article className="termination-notice-preview arbitration-application-preview" aria-label="劳动人事争议仲裁申请书预览">
+          <span>DOCUMENT PREVIEW / 文书预览</span><h4>劳动人事争议仲裁申请书</h4>
+          <p><b>申请人：</b>{arbitrationApplication.applicant.name}，性别：{arbitrationApplication.applicant.gender}，出生日期：{arbitrationApplication.applicant.birthDate}，身份证件号码：{arbitrationApplication.applicant.idNumber}，住所：{arbitrationApplication.applicant.address}，通讯/送达地址：{arbitrationApplication.applicant.serviceAddress}，联系电话：{arbitrationApplication.applicant.phone}。</p>
+          <p><b>被申请人：</b>{arbitrationApplication.respondent.name}，注册地址：{arbitrationApplication.respondent.registeredAddress}，实际办公地址：{arbitrationApplication.respondent.officeAddress}，法定代表人或主要负责人：{arbitrationApplication.respondent.legalRepresentative}，职务：{arbitrationApplication.respondent.legalRepresentativeTitle}，联系电话：{arbitrationApplication.respondent.phone}。</p>
+          <h5>仲裁请求事项</h5><ol>{arbitrationApplication.requestParagraphs.map((paragraph:string|undefined,index:number)=>paragraph?<li key={paragraph}>{index+1}. {paragraph}</li>:null)}</ol>
+          <h5>事实和理由</h5>{arbitrationApplication.factParagraphs.map((paragraph:string|undefined)=>paragraph?<p key={paragraph}>{paragraph}</p>:null)}
+          <h5>证据和证据来源</h5><ol>{arbitrationApplication.evidenceParagraphs.map((paragraph:string,index:number)=><li key={paragraph}>{index+1}. {paragraph}</li>)}</ol>
+          <p>此致</p><p className="arbitration-preview-committee">{arbitrationApplication.committee}</p>
+          <div><p>申请人（签名或盖章）：{arbitrationApplication.applicant.name}</p><p>日期：{arbitrationApplicationDate}</p></div>
+        </article>
+      </div>
+    </section>}
 
     <section className="precision-card">
       <div><div><p className="eyebrow">PRECISION LEDGER / 精算底稿</p><h2>需要逐月复核时再展开</h2></div><button className="back" onClick={()=>setPrecisionOpen(open=>!open)}>{precisionOpen?"收起精算明细":"查看精算明细"}</button></div>
